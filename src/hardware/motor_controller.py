@@ -96,7 +96,11 @@ class MotorController:
             
             if timestamp_path.exists():
                 with open(timestamp_path, 'r') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                # Elevenlabs format: top-level 'words' list, filter for type == 'word'
+                words = data.get('words', [])
+                word_entries = [w for w in words if w.get('type') == 'word']
+                return word_entries
             else:
                 self.logger.warning(f"Timestamp file not found: {timestamp_path}")
                 return None

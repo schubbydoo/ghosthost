@@ -45,22 +45,20 @@ def play_audio(audio_path):
     """Play the audio file using aplay subprocess"""
     subprocess.run(['aplay', str(audio_path)])
 
-def animate_mouth(timestamps):
-    """Open and close mouth based on timestamp data"""
+def animate_mouth(words_json):
+    """Open and close mouth based on Elevenlabs word timestamp data"""
+    # Extract only 'word' type entries
+    word_entries = [w for w in words_json if w.get('type') == 'word']
     start_time = time.time()
-    for word in timestamps:
+    for word in word_entries:
         word_start = word['start']
         word_end = word['end']
         current_time = time.time() - start_time
         sleep_time = word_start - current_time
         if sleep_time > 0:
             time.sleep(sleep_time)
-
-        # Open mouth at word start
         mouth_open()
         time.sleep(word_end - word_start)
-
-        # Close mouth after word ends
         mouth_close()
 
 def main():
@@ -69,18 +67,16 @@ def main():
         print(f"ERROR: Timestamp file not found: {JSON_PATH}")
         return
     with open(JSON_PATH, "r") as f:
-        timestamps = json.load(f)
-
+        json_data = json.load(f)
+    # Elevenlabs format: top-level 'words' list
+    words_json = json_data.get('words', [])
     # Run audio and mouth threads in parallel
     audio_thread = threading.Thread(target=play_audio, args=(AUDIO_PATH,))
-    mouth_thread = threading.Thread(target=animate_mouth, args=(timestamps,))
-
+    mouth_thread = threading.Thread(target=animate_mouth, args=(words_json,))
     audio_thread.start()
     mouth_thread.start()
-
     audio_thread.join()
     mouth_thread.join()
-
     GPIO.cleanup()
 
 if __name__ == "__main__":
