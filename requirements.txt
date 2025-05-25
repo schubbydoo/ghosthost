@@ -1,0 +1,8 @@
+RPi.GPIO==0.7.1
+Flask==2.3.3
+PyYAML==6.0.1
+pydub==0.25.1
+python-dotenv==1.0.0
+openai==0.28.1
+requests==2.31.0
+Werkzeug==2.3.7 

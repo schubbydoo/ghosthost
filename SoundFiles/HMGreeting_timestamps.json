@@ -1,0 +1,193 @@
+[
+  {
+    "word": "Welcome",
+    "start": 0.3,
+    "end": 0.7
+  },
+  {
+    "word": "foolish",
+    "start": 0.71,
+    "end": 1.0
+  },
+  {
+    "word": "mortals",
+    "start": 1.01,
+    "end": 1.4
+  },
+  {
+    "word": "to",
+    "start": 1.41,
+    "end": 1.55
+  },
+  {
+    "word": "the",
+    "start": 1.56,
+    "end": 1.65
+  },
+  {
+    "word": "haunted",
+    "start": 1.66,
+    "end": 2.05
+  },
+  {
+    "word": "mansion",
+    "start": 2.06,
+    "end": 2.5
+  },
+  {
+    "word": "I",
+    "start": 2.9,
+    "end": 3.0
+  },
+  {
+    "word": "am",
+    "start": 3.01,
+    "end": 3.2
+  },
+  {
+    "word": "your",
+    "start": 3.21,
+    "end": 3.35
+  },
+  {
+    "word": "host",
+    "start": 3.36,
+    "end": 3.7
+  },
+  {
+    "word": "your",
+    "start": 4.0,
+    "end": 4.15
+  },
+  {
+    "word": "ghost",
+    "start": 4.16,
+    "end": 4.5
+  },
+  {
+    "word": "host",
+    "start": 4.51,
+    "end": 4.8
+  },
+  {
+    "word": "(closed-mouth-laugh)",
+    "start": 4.9,
+    "end": 5.4,
+    "type": "laugh",
+    "style": "closed"
+  },
+  {
+    "word": "Kindly",
+    "start": 5.7,
+    "end": 6.1
+  },
+  {
+    "word": "step",
+    "start": 6.11,
+    "end": 6.35
+  },
+  {
+    "word": "all",
+    "start": 6.36,
+    "end": 6.55
+  },
+  {
+    "word": "the",
+    "start": 6.56,
+    "end": 6.66
+  },
+  {
+    "word": "way",
+    "start": 6.67,
+    "end": 6.95
+  },
+  {
+    "word": "in",
+    "start": 6.96,
+    "end": 7.1
+  },
+  {
+    "word": "please",
+    "start": 7.11,
+    "end": 7.4
+  },
+  {
+    "word": "(open-mouth-laugh)",
+    "start": 7.7,
+    "end": 8.2,
+    "type": "laugh",
+    "style": "open"
+  },
+  {
+    "word": "There's",
+    "start": 8.6,
+    "end": 8.9
+  },
+  {
+    "word": "no",
+    "start": 8.91,
+    "end": 9.1
+  },
+  {
+    "word": "turning",
+    "start": 9.11,
+    "end": 9.5
+  },
+  {
+    "word": "back",
+    "start": 9.51,
+    "end": 9.8
+  },
+  {
+    "word": "now",
+    "start": 9.81,
+    "end": 10.05
+  },
+  {
+    "word": "Enjoy",
+    "start": 10.3,
+    "end": 10.7
+  },
+  {
+    "word": "your",
+    "start": 10.71,
+    "end": 10.85
+  },
+  {
+    "word": "stay",
+    "start": 10.86,
+    "end": 11.2
+  },
+  {
+    "word": "at",
+    "start": 11.21,
+    "end": 11.35
+  },
+  {
+    "word": "our",
+    "start": 11.36,
+    "end": 11.55
+  },
+  {
+    "word": "eternal",
+    "start": 11.56,
+    "end": 11.9
+  },
+  {
+    "word": "resting",
+    "start": 11.91,
+    "end": 12.25
+  },
+  {
+    "word": "place",
+    "start": 12.26,
+    "end": 12.6
+  },
+  {
+    "word": "(open-mouth-laugh)",
+    "start": 12.9,
+    "end": 13.5,
+    "type": "laugh",
+    "style": "open"
+  }
+]

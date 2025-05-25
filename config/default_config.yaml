@@ -1,0 +1,56 @@
+# Ghost Host Configuration
+# ======================
+
+# Hardware Settings
+hardware:
+  gpio:
+    led_eyes: 15
+    sensor_port_left: 9   # Left sensor port (PIR/button/pad)
+    sensor_port_right: 25 # Right sensor port (PIR/button/pad)
+    motor_head_in1: 4
+    motor_head_in2: 14
+    motor_torso_in1: 17
+    motor_torso_in2: 18
+    motor_mouth_in1: 23
+    motor_mouth_in2: 22
+
+# Audio Settings
+audio:
+  default_file: "HMGreeting.wav"
+  volume: 80  # 0-100
+  soundfiles_dir: "SoundFiles"
+
+# Sensor Settings
+sensors:
+  debounce_time: 0.2  # seconds
+  cooldown_period: 30  # seconds after audio ends before next trigger
+
+# Motor Settings
+motors:
+  # Duration to run motors during audio (testing will help determine)
+  head_torso_duration: 0  # 0 means run for full audio duration
+  mouth_open_duration: 0.1  # seconds to open mouth per word
+  mouth_close_delay: 0.05  # seconds between mouth movements
+
+# Network Settings
+network:
+  ap_mode:
+    ssid: "ghosthost"
+    password: ""  # No password
+    ip_address: "192.168.4.1"
+    subnet: "192.168.4.0/24"
+    timeout: 300  # 5 minutes before fallback
+  fallback_ssid: ""  # Will be set via web interface
+
+# Web Interface
+web:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/ghosthost.log"
+  max_size: "10MB"
+  backup_count: 5 

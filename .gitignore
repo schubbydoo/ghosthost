@@ -1,0 +1,24 @@
+# Ignore Python virtual environments
+venv/
+# Ignore editor and system files
+.cursor-server/
+.cursor/
+.cache/
+.config/
+.local/
+logs/
+# Ignore OS files
+.DS_Store
+Thumbs.db
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# Ignore other hidden files
+.sudo_as_admin_successful
+.bash_history
+.bash_logout
+.bashrc
+.profile
+.env
