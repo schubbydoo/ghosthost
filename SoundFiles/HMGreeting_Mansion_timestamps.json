@@ -1,0 +1,476 @@
+{
+  "language_code": "eng",
+  "language_probability": 0.8477679491043091,
+  "text": "Welcome, foolish mortals, to the haunted mansion. I am your host, your ghost host. (laughs) Kindly step all the way in, please, and make room for everyone. There's no turning back now. (laughs) (door closes)",
+  "words": [
+    {
+      "text": "Welcome,",
+      "start": 0.519,
+      "end": 1.439,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 1.439,
+      "end": 1.86,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "foolish",
+      "start": 1.86,
+      "end": 2.459,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 2.459,
+      "end": 2.579,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "mortals,",
+      "start": 2.579,
+      "end": 3.359,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 3.359,
+      "end": 3.559,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "to",
+      "start": 3.559,
+      "end": 3.679,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 3.679,
+      "end": 3.759,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "the",
+      "start": 3.759,
+      "end": 3.859,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 3.859,
+      "end": 3.939,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "haunted",
+      "start": 3.939,
+      "end": 4.579,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 4.579,
+      "end": 4.679,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "mansion.",
+      "start": 4.679,
+      "end": 5.459,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 5.459,
+      "end": 6.199,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "I",
+      "start": 6.199,
+      "end": 6.619,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 6.619,
+      "end": 6.879,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "am",
+      "start": 6.879,
+      "end": 7.079,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 7.079,
+      "end": 7.099,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "your",
+      "start": 7.099,
+      "end": 7.299,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 7.299,
+      "end": 7.379,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "host,",
+      "start": 7.379,
+      "end": 8.04,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 8.04,
+      "end": 8.359,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "your",
+      "start": 8.359,
+      "end": 8.659,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 8.659,
+      "end": 9.139,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "ghost",
+      "start": 9.139,
+      "end": 9.739,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 9.739,
+      "end": 10.039,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "host.",
+      "start": 10.039,
+      "end": 10.659,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 10.659,
+      "end": 10.8,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "(laughs)",
+      "start": 10.8,
+      "end": 11.92,
+      "type": "audio_event",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 11.92,
+      "end": 13.799,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "Kindly",
+      "start": 13.799,
+      "end": 14.299,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 14.299,
+      "end": 14.38,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "step",
+      "start": 14.38,
+      "end": 14.679,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 14.679,
+      "end": 14.719,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "all",
+      "start": 14.719,
+      "end": 14.92,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 14.92,
+      "end": 15.0,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "the",
+      "start": 15.0,
+      "end": 15.079,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 15.079,
+      "end": 15.139,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "way",
+      "start": 15.139,
+      "end": 15.319,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 15.319,
+      "end": 15.399,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "in,",
+      "start": 15.399,
+      "end": 15.639,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 15.639,
+      "end": 15.659,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "please,",
+      "start": 15.659,
+      "end": 16.199,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 16.199,
+      "end": 16.379,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "and",
+      "start": 16.379,
+      "end": 16.52,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 16.52,
+      "end": 16.579,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "make",
+      "start": 16.579,
+      "end": 16.78,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 16.78,
+      "end": 16.84,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "room",
+      "start": 16.84,
+      "end": 17.079,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 17.079,
+      "end": 17.139,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "for",
+      "start": 17.139,
+      "end": 17.319,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 17.319,
+      "end": 17.359,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "everyone.",
+      "start": 17.359,
+      "end": 18.179,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 18.179,
+      "end": 18.5,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "There's",
+      "start": 18.5,
+      "end": 18.979,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 18.979,
+      "end": 19.119,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "no",
+      "start": 19.119,
+      "end": 19.54,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 19.54,
+      "end": 19.799,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "turning",
+      "start": 19.799,
+      "end": 20.42,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 20.42,
+      "end": 20.539,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "back",
+      "start": 20.539,
+      "end": 21.02,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 21.02,
+      "end": 21.1,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "now.",
+      "start": 21.1,
+      "end": 21.739,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 21.739,
+      "end": 22.399,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "(laughs)",
+      "start": 22.399,
+      "end": 26.12,
+      "type": "word",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 23.12,
+      "end": 24.979,
+      "type": "spacing",
+      "logprob": 0.0
+    },
+    {
+      "text": "(door closes)",
+      "start": 24.979,
+      "end": 27.0,
+      "type": "audio_event",
+      "logprob": 0.0
+    }
+  ]
+}
