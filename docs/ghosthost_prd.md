@@ -60,11 +60,12 @@ The Ghost Host application runs an animatronic that provides audio output, motor
 **Web Interface:**
 
 * Accessible at `ghosthost.local:8000`
-* Volume configuration
-* Cooldown period configuration
-* Choosing the audio file to be played ( in /SoundFiles)
-* Audio file management (upload/delete)
+* Volume configuration and showing the current setting
+* Cooldown period after main.py completes configuration. Should show the current value.
+* Choosing the audio file to be played ( in /SoundFiles). This should also include the complimentary .json timestamp file. It also should show the current setting.
+* Audio & timestamp file management (upload/delete)
 * WiFi network selection and password configuration
+* Network configuration section should include the ability to choose from available networks, add/delete from a list of My Networks. See the attached image for reference.
 
 **Network Management:**
 

@@ -5,6 +5,8 @@ import socket
 import fcntl
 import struct
 import os
+import subprocess
+import logging
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -12,13 +14,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.core.config_manager import config
 from src.hardware.audio_controller import AudioController
 from src.core.event_handler import EventHandler
+from src.network_management.network_manager import NetworkManager
 
 audio_controller = AudioController(config)
-
-# Instantiate event handler for status
-status_handler = EventHandler(config)
+network_manager = NetworkManager()
 
 app = Flask(__name__)
+
+# Configure basic logging for the app if not already present
+if not app.debug:
+    logging.basicConfig(level=logging.INFO)
 
 @app.route('/')
 def home():
@@ -103,11 +108,9 @@ def serve_audio_file(filename):
 @app.route('/api/status', methods=['GET'])
 def get_status():
     status = {}
-    # Get IP address (try to get LAN IP, not 127.0.1.1)
     def get_lan_ip():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # This IP doesn't need to be reachable
             s.connect(('8.8.8.8', 80))
             ip = s.getsockname()[0]
             s.close()
@@ -115,34 +118,69 @@ def get_status():
         except Exception:
             return 'Unavailable'
     status['ip_address'] = get_lan_ip()
-    # TODO: Add current network info (SSID, etc.)
+    status['current_network'] = network_manager.get_current_ssid() or "Not Connected"
+    status['ap_mode_active'], status['ap_ssid'] = network_manager.get_ap_mode_status()
     return jsonify(status)
 
-# --- WIFI/NETWORK MANAGEMENT API (stubs) ---
+# --- WIFI/NETWORK MANAGEMENT API (using NetworkManager) ---
+
 @app.route('/api/networks', methods=['GET'])
-def list_networks():
-    # TODO: Implement using nmcli or similar
-    return jsonify({'networks': [], 'my_networks': []})
+def list_networks_api():
+    available = network_manager.scan_wifi_networks()
+    saved = network_manager.get_saved_networks()
+    return jsonify({'available_networks': available, 'saved_networks': saved})
 
 @app.route('/api/networks/connect', methods=['POST'])
-def connect_network():
-    # TODO: Implement connect logic
-    return jsonify({'success': False, 'error': 'Not implemented'}), 501
+def connect_network_api():
+    data = request.get_json()
+    ssid_or_uuid = data.get('ssid_or_uuid')
+    password = data.get('password')
+    if not ssid_or_uuid:
+        return jsonify({'success': False, 'message': 'SSID or UUID required'}), 400
+    
+    success, msg = network_manager.connect_network(ssid_or_uuid, password)
+    return jsonify({'success': success, 'message': msg})
 
-@app.route('/api/networks/disconnect', methods=['POST'])
-def disconnect_network():
-    # TODO: Implement disconnect logic
-    return jsonify({'success': False, 'error': 'Not implemented'}), 501
-
-@app.route('/api/networks/add', methods=['POST'])
-def add_network():
-    # TODO: Implement add logic
-    return jsonify({'success': False, 'error': 'Not implemented'}), 501
+@app.route('/api/networks/save', methods=['POST'])
+def save_network_api():
+    data = request.get_json()
+    ssid = data.get('ssid')
+    password = data.get('password')
+    autoconnect = data.get('autoconnect', True)
+    if not ssid or not password:
+        return jsonify({'success': False, 'message': 'SSID and password required'}), 400
+    
+    success, msg = network_manager.save_network(ssid, password, autoconnect)
+    return jsonify({'success': success, 'message': msg})
 
 @app.route('/api/networks/delete', methods=['POST'])
-def delete_network():
-    # TODO: Implement delete logic
-    return jsonify({'success': False, 'error': 'Not implemented'}), 501
+def delete_network_api():
+    data = request.get_json()
+    name_or_uuid = data.get('name_or_uuid')
+    if not name_or_uuid:
+        return jsonify({'success': False, 'message': 'Name or UUID required'}), 400
+    
+    success, msg = network_manager.delete_network(name_or_uuid)
+    return jsonify({'success': success, 'message': msg})
+
+@app.route('/api/networks/disconnect', methods=['POST'])
+def disconnect_network_api():
+    data = request.get_json()
+    name_or_uuid = data.get('name_or_uuid', None)
+    success, msg = network_manager.disconnect_network(name_or_uuid)
+    return jsonify({'success': success, 'message': msg})
+
+@app.route('/api/networks/activate_ap', methods=['POST'])
+def activate_ap_api():
+    success, msg = network_manager.activate_ap_mode()
+    return jsonify({'success': success, 'message': msg})
+
+@app.route('/api/networks/deactivate_ap', methods=['POST'])
+def deactivate_ap_api():
+    success, msg = network_manager.deactivate_ap_mode()
+    return jsonify({'success': success, 'message': msg})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(host=config.get('web.host', '0.0.0.0'), 
+            port=config.get('web.port', 8000), 
+            debug=config.get('web.debug', True))

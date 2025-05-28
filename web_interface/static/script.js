@@ -178,9 +178,192 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // --- WIFI MANAGEMENT LOGIC ---
+    const selectAvailableNetworks = document.getElementById('select-available-networks');
+    const inputAvailablePassword = document.getElementById('input-available-password');
+    const btnConnectAvailable = document.getElementById('btn-connect-available');
+    const selectSavedNetworks = document.getElementById('select-saved-networks');
+    const btnConnectSaved = document.getElementById('btn-connect-saved');
+    const btnDisconnectNetwork = document.getElementById('btn-disconnect-network');
+    const btnDeleteSaved = document.getElementById('btn-delete-saved');
+    const inputNewSsid = document.getElementById('input-new-ssid');
+    const inputNewPassword = document.getElementById('input-new-password');
+    const checkboxNewAutoconnect = document.getElementById('checkbox-new-autoconnect');
+    const btnSaveNetwork = document.getElementById('btn-save-network');
+    const btnActivateAp = document.getElementById('btn-activate-ap');
+    const btnDeactivateAp = document.getElementById('btn-deactivate-ap');
+    const btnRefreshWifiLists = document.getElementById('btn-refresh-wifi-lists');
+    const wifiStatusMessage = document.getElementById('wifi-status-message');
+
+    function displayWifiMessage(message, isError = false) {
+        wifiStatusMessage.textContent = message;
+        wifiStatusMessage.className = `alert ${isError ? 'alert-danger' : 'alert-success'}`;
+        wifiStatusMessage.style.display = 'block';
+        // Automatically hide after 5 seconds
+        setTimeout(() => {
+            wifiStatusMessage.style.display = 'none';
+        }, 5000);
+    }
+
+    async function loadWiFiNetworks() {
+        try {
+            const response = await fetch('/api/networks');
+            const data = await response.json();
+
+            // Populate Available Networks
+            selectAvailableNetworks.innerHTML = '<option selected disabled>Select an available network...</option>';
+            if (data.available_networks && data.available_networks.length > 0) {
+                data.available_networks.forEach(net => {
+                    const option = document.createElement('option');
+                    option.value = net.ssid;
+                    option.textContent = `${net.ssid} (${net.signal}%, ${net.security})`;
+                    selectAvailableNetworks.appendChild(option);
+                });
+            } else {
+                selectAvailableNetworks.innerHTML = '<option selected disabled>No networks found nearby</option>';
+            }
+
+            // Populate Saved Networks
+            selectSavedNetworks.innerHTML = '<option selected disabled>Select a saved network...</option>';
+            if (data.saved_networks && data.saved_networks.length > 0) {
+                data.saved_networks.forEach(net => {
+                    const option = document.createElement('option');
+                    option.value = net.uuid; // Use UUID for connect/delete if available, else name
+                    option.textContent = net.name;
+                    selectSavedNetworks.appendChild(option);
+                });
+            } else {
+                selectSavedNetworks.innerHTML = '<option selected disabled>No saved networks</option>';
+            }
+        } catch (error) {
+            displayWifiMessage('Error loading WiFi networks: ' + error, true);
+        }
+    }
+
+    btnRefreshWifiLists.addEventListener('click', loadWiFiNetworks);
+
+    btnConnectAvailable.addEventListener('click', async () => {
+        const ssid = selectAvailableNetworks.value;
+        const password = inputAvailablePassword.value;
+        if (!ssid || ssid === 'Select an available network...') {
+            displayWifiMessage('Please select an available network.', true);
+            return;
+        }
+        // Password might be optional for open networks, backend handles this
+        const response = await fetch('/api/networks/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssid_or_uuid: ssid, password: password })
+        });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) {
+            loadWiFiNetworks(); // Refresh lists
+            loadStatus(); // Refresh status (current network)
+        }
+    });
+
+    btnConnectSaved.addEventListener('click', async () => {
+        const selectedOption = selectSavedNetworks.options[selectSavedNetworks.selectedIndex];
+        const name_or_uuid = selectedOption.value;
+        if (!name_or_uuid || name_or_uuid === 'Select a saved network...') {
+            displayWifiMessage('Please select a saved network to connect.', true);
+            return;
+        }
+        const response = await fetch('/api/networks/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssid_or_uuid: name_or_uuid })
+        });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) {
+            loadStatus(); // Refresh status
+        }
+    });
+
+    btnDisconnectNetwork.addEventListener('click', async () => {
+        // Disconnects the currently active connection by default if no specific one is chosen
+        const response = await fetch('/api/networks/disconnect', { method: 'POST' });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) {
+            loadStatus(); // Refresh status
+        }
+    });
+
+    btnDeleteSaved.addEventListener('click', async () => {
+        const selectedOption = selectSavedNetworks.options[selectSavedNetworks.selectedIndex];
+        const name_or_uuid = selectedOption.value;
+        if (!name_or_uuid || name_or_uuid === 'Select a saved network...') {
+            displayWifiMessage('Please select a saved network to delete.', true);
+            return;
+        }
+        if (!confirm(`Are you sure you want to delete the network: ${selectedOption.textContent}?`)) return;
+
+        const response = await fetch('/api/networks/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name_or_uuid: name_or_uuid })
+        });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) {
+            loadWiFiNetworks(); // Refresh lists
+        }
+    });
+
+    btnSaveNetwork.addEventListener('click', async () => {
+        const ssid = inputNewSsid.value.trim();
+        const password = inputNewPassword.value;
+        const autoconnect = checkboxNewAutoconnect.checked;
+
+        if (!ssid) {
+            displayWifiMessage('SSID cannot be empty.', true);
+            return;
+        }
+        // Password can be empty for open networks, but usually required for save.
+        // Backend should handle if password is truly required based on security type if we get that far.
+        if (!password) {
+             displayWifiMessage('Password is required to save a network.', true);
+             return;
+        }
+
+        const response = await fetch('/api/networks/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssid, password, autoconnect })
+        });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) {
+            inputNewSsid.value = '';
+            inputNewPassword.value = '';
+            loadWiFiNetworks(); // Refresh lists
+            loadStatus();
+        }
+    });
+
+    btnActivateAp.addEventListener('click', async () => {
+        const response = await fetch('/api/networks/activate_ap', { method: 'POST' });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) loadStatus();
+    });
+
+    btnDeactivateAp.addEventListener('click', async () => {
+        const response = await fetch('/api/networks/deactivate_ap', { method: 'POST' });
+        const result = await response.json();
+        displayWifiMessage(result.message, !result.success);
+        if (result.success) loadStatus();
+    });
+
     // Initial load
     loadAudioFiles();
     loadVolume();
     loadStatus();
     setInterval(loadStatus, 5000);
+
+    // Initial load for WiFi section
+    loadWiFiNetworks();
 }); 
