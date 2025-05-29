@@ -453,65 +453,65 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Optional: Auto-refresh status periodically
     // setInterval(loadStatus, 15000); // Refresh status every 15 seconds
-}); 
 
-// This function should be present in web_interface/static/script.js
-function generateTimestamps(filename) {
-    if (!filename) return;
+    function generateTimestamps(filename) {
+        console.log("generateTimestamps called for:", filename);
+        if (!filename) return;
 
-    // Attempt to select the specific button to give visual feedback
-    const generateButton = audioFileList.querySelector(`.btn-generate-timestamps[data-filename="${filename}"]`);
-    const originalButtonText = generateButton ? generateButton.textContent : '';
+        // Attempt to select the specific button to give visual feedback
+        const generateButton = audioFileList.querySelector(`.btn-generate-timestamps[data-filename="${filename}"]`);
+        const originalButtonText = generateButton ? generateButton.textContent : '';
 
-    if(generateButton) {
-        generateButton.disabled = true;
-        generateButton.textContent = 'Generating...';
-    }
-
-    // Use 'uploadStatus' for messages, assuming it exists and is suitable
-    const statusElement = document.getElementById('upload-status'); 
-
-    fetch(`/api/audio/generate_timestamps/${encodeURIComponent(filename)}`, { 
-        method: 'POST'
-    })
-    .then(res => {
-        if (!res.ok) { // Check for non-2xx responses
-            return res.json().then(errData => {
-                throw { status: res.status, data: errData }; // Throw an object to be caught
-            });
+        if(generateButton) {
+            generateButton.disabled = true;
+            generateButton.textContent = 'Generating...';
         }
-        return res.json();
-    })
-    .then(data => {
-        if (data.success) {
-            if (statusElement) displayMessage(statusElement, `Timestamps generated for ${filename}. Output: ${data.output || ''}`, true);
-            else alert(`Timestamps generated for ${filename}.`);
-            loadAudioFiles(); // Refresh list to show new timestamp status
-            loadStatus(); // Also refresh general status
-        } else {
-            // data.error should be primary, data.details for more specifics
-            const errorMessage = `Error: ${data.error || 'Failed to generate timestamps.'} ${data.details ? 'Details: ' + data.details : ''}`;
+
+        // Use 'uploadStatus' for messages, assuming it exists and is suitable
+        const statusElement = document.getElementById('upload-status'); 
+
+        fetch(`/api/audio/generate_timestamps/${encodeURIComponent(filename)}`, { 
+            method: 'POST'
+        })
+        .then(res => {
+            if (!res.ok) { // Check for non-2xx responses
+                return res.json().then(errData => {
+                    throw { status: res.status, data: errData }; // Throw an object to be caught
+                });
+            }
+            return res.json();
+        })
+        .then(data => {
+            if (data.success) {
+                if (statusElement) displayMessage(statusElement, `Timestamps generated for ${filename}. Output: ${data.output || ''}`, true);
+                else alert(`Timestamps generated for ${filename}.`);
+                loadAudioFiles(); // Refresh list to show new timestamp status
+                loadStatus(); // Also refresh general status
+            } else {
+                // data.error should be primary, data.details for more specifics
+                const errorMessage = `Error: ${data.error || 'Failed to generate timestamps.'} ${data.details ? 'Details: ' + data.details : ''}`;
+                if (statusElement) displayMessage(statusElement, errorMessage, false);
+                else alert(errorMessage);
+                console.error("Timestamp generation failed:", data);
+            }
+        })
+        .catch(error => {
+            let errorMessage = 'Request error generating timestamps.';
+            if (error.status && error.data && error.data.error) { // From our custom thrown error
+                 errorMessage = `Error ${error.status}: ${error.data.error}. ${error.data.details ? 'Details: ' + error.data.details : ''}`;
+            } else if (error.message) { // Standard JS error
+                errorMessage += ` ${error.message}`;
+            }
+            
             if (statusElement) displayMessage(statusElement, errorMessage, false);
             else alert(errorMessage);
-            console.error("Timestamp generation failed:", data);
-        }
-    })
-    .catch(error => {
-        let errorMessage = 'Request error generating timestamps.';
-        if (error.status && error.data && error.data.error) { // From our custom thrown error
-             errorMessage = `Error ${error.status}: ${error.data.error}. ${error.data.details ? 'Details: ' + error.data.details : ''}`;
-        } else if (error.message) { // Standard JS error
-            errorMessage += ` ${error.message}`;
-        }
-        
-        if (statusElement) displayMessage(statusElement, errorMessage, false);
-        else alert(errorMessage);
-        console.error("Timestamp generation request failed:", error);
-    })
-    .finally(() => {
-        if(generateButton) {
-            generateButton.disabled = false;
-            generateButton.textContent = originalButtonText; 
-        }
-    });
-} 
+            console.error("Timestamp generation request failed:", error);
+        })
+        .finally(() => {
+            if(generateButton) {
+                generateButton.disabled = false;
+                generateButton.textContent = originalButtonText; 
+            }
+        });
+    }
+}); 

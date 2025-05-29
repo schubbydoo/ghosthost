@@ -10,7 +10,7 @@ echo "Virtual environment activated." >> "$LOGFILE" 2>&1
 mkdir -p /home/ghosthost/logs
 
 # Start ap_mode_manager.py
-python3 /home/ghosthost/web_interface/src/ap_mode_manager.py >> /home/ghosthost/logs/ap_mode_manager.log 2>&1 &
+python3 /home/ghosthost/src/network_management/ap_mode_manager.py >> /home/ghosthost/logs/ap_mode_manager.log 2>&1 &
 
 # Start Flask web interface
 python3 /home/ghosthost/web_interface/app.py >> /home/ghosthost/logs/web_interface.log 2>&1 &
