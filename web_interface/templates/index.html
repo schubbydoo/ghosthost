@@ -9,22 +9,33 @@
 </head>
 <body>
     <div class="container mt-5">
+        {% if is_ap_mode %}
+        <div class="alert alert-warning" role="alert">
+            <h4>WiFi Setup Mode Active</h4>
+            <p>You are currently connected to the Ghost Host setup network (<b>{{ ap_ssid }}</b>). Your device's IP is likely <b>{{ request.remote_addr }}</b>. The Ghost Host AP is at <b>{{ request.host.split(':')[0] }}</b>.</p>
+            <p>Please configure a WiFi network below to connect the Ghost Host to the internet and restore normal functionality. Other features are disabled in this mode.</p>
+        </div>
+        {% endif %}
+
         <h1>Ghost Host Control Panel</h1>
         <hr>
 
         <!-- Status Section -->
-        <div class="card mb-4">
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
                 Status
             </div>
             <div class="card-body">
                 <p><strong>Current Network:</strong> <span id="status-network">Loading...</span></p>
                 <p><strong>IP Address:</strong> <span id="status-ip">Loading...</span></p>
+                <!-- AP Mode status can be shown here if desired even when not in AP mode itself -->
+                <p><strong>AP Mode Status:</strong> <span id="status-ap-mode">Loading...</span></p>
+
             </div>
         </div>
 
         <!-- Audio Management Section -->
-        <div class="card mb-4">
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
                 Audio Management
             </div>
@@ -32,13 +43,21 @@
                 <!-- Current Default and Volume Display -->
                 <div class="mb-3">
                     <strong>Current Default Audio:</strong> <span id="current-default-audio">Loading...</span><br>
-                    <strong>Current Volume:</strong> <span id="current-volume">--</span>
+                    <strong>Current Volume:</strong> <span id="current-volume">--</span>%
                 </div>
                 <!-- Audio File List -->
                 <div class="mb-3">
                     <h5>Available Audio Files</h5>
                     <ul class="list-group" id="audio-file-list">
-                        <!-- Populated by JS -->
+                        <!-- Populated by JS. Example of list item structure for JS:
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>filename.wav</span>
+                            <div>
+                                <button class="btn btn-sm btn-info btn-generate-timestamps" data-filename="filename.wav" style="display:none;">Generate Timestamps</button>
+                                <button class="btn btn-sm btn-danger btn-delete-audio" data-filename="filename.wav">Delete</button>
+                            </div>
+                        </li>
+                        -->
                     </ul>
                 </div>
                 <!-- Set Default Audio -->
@@ -51,10 +70,10 @@
                 </div>
                 <!-- Upload Audio File -->
                 <div class="mb-3">
-                    <label for="audio-upload" class="form-label">Upload New Audio File (.wav)</label>
-                    <input class="form-control" type="file" id="audio-upload" accept=".wav">
+                    <label for="audio-upload" class="form-label">Upload New Audio File (e.g., .wav, .mp3)</label>
+                    <input class="form-control" type="file" id="audio-upload" accept=".wav,.mp3,.m4a,.ogg,.flac">
                     <button class="btn btn-primary mt-2" id="btn-upload-audio">Upload</button>
-                    <div id="upload-status" class="form-text text-success"></div>
+                    <div id="upload-status" class="form-text"></div>
                 </div>
                 <!-- Volume Control -->
                 <div class="mb-3">
@@ -72,10 +91,10 @@
         <!-- WiFi Networks Section -->
         <div class="card mb-4">
             <div class="card-header">
-                WiFi Networks
+                WiFi Networks Configuration
             </div>
             <div class="card-body">
-                <div id="wifi-status-message" class="alert alert-info" role="alert" style="display: none;"></div>
+                <div id="wifi-status-message" class="alert" role="alert" style="display: none;"></div>
 
                 <div class="row">
                     <!-- Column 1: Available & Saved Networks -->
@@ -91,59 +110,64 @@
                             <button class="btn btn-success" id="btn-connect-available">Connect</button>
                         </div>
 
-                        <hr class="my-4">
+                        <hr class="my-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
 
-                        <h5>My Networks (Saved)</h5>
-                        <div class="input-group mb-3">
-                            <select class="form-select" id="select-saved-networks">
-                                <option selected>Loading saved...</option>
-                            </select>
-                            <button class="btn btn-info" id="btn-connect-saved">Connect to Saved</button>
-                        </div>
-                        <div class="d-flex justify-content-between">
-                            <button class="btn btn-warning" id="btn-disconnect-network">Disconnect Current</button>
-                            <button class="btn btn-danger" id="btn-delete-saved">Delete Selected Saved</button>
+                        <div {% if is_ap_mode %}style="display:none;"{% endif %}>
+                            <h5>My Networks (Saved)</h5>
+                            <div class="input-group mb-3">
+                                <select class="form-select" id="select-saved-networks">
+                                    <option selected>Loading saved...</option>
+                                </select>
+                                <button class="btn btn-info" id="btn-connect-saved">Connect to Saved</button>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <button class="btn btn-warning" id="btn-disconnect-network">Disconnect Current</button>
+                                <button class="btn btn-danger" id="btn-delete-saved">Delete Selected Saved</button>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Column 2: Add New & AP Mode -->
+                    <!-- Column 2: Add New Network (This is primary for AP mode, but useful otherwise too) -->
                     <div class="col-md-6">
-                        <h5>Add New Network</h5>
+                        <h5>Add/Save New Network</h5>
                         <div class="mb-3">
                             <label for="input-new-ssid" class="form-label">SSID</label>
-                            <input type="text" class="form-control" id="input-new-ssid">
+                            <input type="text" class="form-control" id="input-new-ssid" placeholder="Enter SSID of network to connect/save">
                         </div>
                         <div class="mb-3">
                             <label for="input-new-password" class="form-label">Password</label>
                             <input type="password" class="form-control" id="input-new-password">
                         </div>
-                        <div class="form-check mb-3">
+                        <div class="form-check mb-3" {% if is_ap_mode %}style="display:none;"{% endif %}>
                             <input class="form-check-input" type="checkbox" id="checkbox-new-autoconnect" checked>
                             <label class="form-check-label" for="checkbox-new-autoconnect">
                                 Autoconnect on startup
                             </label>
                         </div>
-                        <button class="btn btn-primary w-100 mb-3" id="btn-save-network">Save Network</button>
-
-                        <hr class="my-4">
+                        <!-- In AP mode, this button's primary action is to connect (and implicitly save/switch mode) -->
+                        <!-- In Client mode, this button is primarily for saving a new network profile -->
+                        <button class="btn btn-primary w-100 mb-3" id="btn-save-or-connect-new-network">
+                            {% if is_ap_mode %}Connect to this Network{% else %}Save Network Profile{% endif %}
+                        </button>
                         
-                        <h5>Access Point (AP) Mode</h5>
-                        <div class="d-grid gap-2">
-                            <button class="btn btn-outline-success" id="btn-activate-ap">Activate AP Mode</button>
-                            <button class="btn btn-outline-danger" id="btn-deactivate-ap">Deactivate AP Mode</button>
-                        </div>
+                        <!-- Removed AP Mode activation/deactivation buttons -->
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Reboot Section -->
-        <div class="text-center">
+        <div class="text-center" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <button id="btn-reboot" class="btn btn-danger">Reboot System</button>
         </div>
 
     </div>
 
+    <script>
+        // Pass backend variables to JavaScript
+        var IS_AP_MODE = {{ is_ap_mode | tojson }};
+        var AP_SSID = "{{ ap_ssid or '' }}";
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>

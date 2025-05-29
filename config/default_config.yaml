@@ -1,5 +1,5 @@
 audio:
-  default_file: HMGreeting_Mansion.wav
+  default_file: HMGreeting.wav
   soundfiles_dir: SoundFiles
   volume: 100
 hardware:

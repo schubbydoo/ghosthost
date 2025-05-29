@@ -1,3 +1,8 @@
+# Import the function and constants from ap_mode_manager
+from .ap_mode_manager import switch_to_client_mode as ap_manager_switch_to_client_mode
+from .ap_mode_manager import AP_CONNECTION_NAME as DEFAULT_AP_NAME
+from .ap_mode_manager import AP_IP_ADDRESS as DEFAULT_AP_IP_CIDR
+
 import subprocess
 import logging
 import shlex
@@ -68,27 +73,47 @@ class NetworkManager:
         return saved_networks
 
     def connect_network(self, ssid_or_uuid, password=None):
-        # Try connecting to an existing saved connection first by SSID (name) or UUID
-        success, msg = self._run_nmcli_command(['connection', 'up', ssid_or_uuid])
-        if success:
-            logger.info(f"Successfully connected to existing connection: {ssid_or_uuid}")
-            return True, msg
-        
-        # If it failed (maybe not a saved connection, or needs password) and password is provided, try connect with password
-        if password and ssid_or_uuid: # ssid_or_uuid here must be an SSID
-            logger.info(f"Trying to connect to {ssid_or_uuid} with password.")
-            # Delete if a failed/incomplete connection exists with this name to avoid conflicts
-            self._run_nmcli_command(['connection', 'delete', ssid_or_uuid]) 
-            success, msg = self._run_nmcli_command(['device', 'wifi', 'connect', ssid_or_uuid, 'password', password])
+        is_ap_active, _ = self.get_ap_mode_status()
+        if is_ap_active:
+            logger.info(f"AP mode is active. Calling ap_mode_manager.switch_to_client_mode for SSID: {ssid_or_uuid}")
+            # This function now handles bringing down AP, deleting profile, and connecting.
+            success = ap_manager_switch_to_client_mode(target_ssid=ssid_or_uuid, target_password=password)
             if success:
-                logger.info(f"Successfully connected to {ssid_or_uuid} with new connection.")
+                return True, f"Successfully switched from AP mode and connected to {ssid_or_uuid}"
             else:
-                logger.error(f"Failed to connect to {ssid_or_uuid} with password: {msg}")
-            return success, msg
-        
-        logger.error(f"Failed to connect to {ssid_or_uuid}. Last message: {msg}")
-        return False, msg
-
+                return False, f"Failed to switch from AP mode or connect to {ssid_or_uuid}"
+        else:
+            # Standard connection logic when not in AP mode
+            logger.info(f"Not in AP mode. Attempting to connect to {ssid_or_uuid}")
+            # Try connecting to an existing saved connection first by SSID (name) or UUID
+            # Use use_sudo=True for nmcli connection up
+            success, msg = self._run_nmcli_command(['connection', 'up', ssid_or_uuid], use_sudo=True)
+            if success:
+                if "Connection activation failed" not in msg: # A bit of a heuristic for real success
+                    logger.info(f"Successfully connected to existing connection: {ssid_or_uuid}")
+                    return True, msg
+                else:
+                    logger.warning(f"'nmcli connection up {ssid_or_uuid}' reported success but message indicates failure: {msg}")
+                    # Fall through to try with password if provided
+            
+            # If it failed (maybe not a saved connection, or needs password) and password is provided, try connect with password
+            if password and ssid_or_uuid: # ssid_or_uuid here must be an SSID
+                logger.info(f"Trying to connect to {ssid_or_uuid} with password (will create/update profile).")
+                # nmcli dev wifi connect will create a profile or update if one with the same SSID exists.
+                # It's generally preferred over manual add+up for simple cases.
+                # Ensure use_sudo=True
+                connect_command = ['device', 'wifi', 'connect', ssid_or_uuid, 'password', password]
+                # Optionally add 'name' field to create a connection with a specific name based on SSID
+                # connect_command.extend(['name', ssid_or_uuid])
+                success, msg = self._run_nmcli_command(connect_command, use_sudo=True)
+                if success:
+                    logger.info(f"Successfully initiated connection to {ssid_or_uuid} with new/updated profile.")
+                else:
+                    logger.error(f"Failed to connect to {ssid_or_uuid} with password: {msg}")
+                return success, msg
+            
+            logger.error(f"Failed to connect to {ssid_or_uuid}. It might not be a saved connection or requires a password not provided. Last message: {msg}")
+            return False, msg
 
     def save_network(self, ssid, password, autoconnect=True):
         connection_name = ssid # Use SSID as connection name by default
@@ -106,9 +131,10 @@ class NetworkManager:
             'wifi-sec.psk', password,
             'connection.autoconnect', 'yes' if autoconnect else 'no'
         ]
+            
         success, msg = self._run_nmcli_command(cmd)
         if success:
-            logger.info(f"Network {ssid} saved successfully.")
+            logger.info(f"Network {ssid} saved successfully with autoconnect: {autoconnect}.")
         else:
             logger.error(f"Failed to save network {ssid}: {msg}")
         return success, msg
@@ -168,72 +194,25 @@ class NetworkManager:
         return success, msg
 
     def get_ap_mode_status(self):
-        # Check if 'ghosthost' or 'zoltar' AP connection is active
+        """Checks if the system is currently in the defined AP mode."""
         active_details = self.get_active_connection_details()
-        if active_details and active_details.get('GENERAL.NAME', '').lower() in ['ghosthost', 'zoltar', 'psychic']:
-            if active_details.get('IP4.ADDRESS[1]', '').startswith('192.168.4.1'): # Typical AP IP
-                 return True, active_details.get('GENERAL.NAME')
+        ap_ip_base = DEFAULT_AP_IP_CIDR.split('/')[0]
+        if active_details:
+            conn_name = active_details.get('GENERAL.NAME', '')
+            ip4_address_full = active_details.get('IP4.ADDRESS[1]', '') # e.g., '192.168.42.1/24'
+            ip4_address = ip4_address_full.split('/')[0] if '/' in ip4_address_full else ''
+            interface_name = active_details.get('GENERAL.INTERFACE', '')
+
+            logger.debug(f"get_ap_mode_status: Conn Name: {conn_name}, IP: {ip4_address}, Interface: {interface_name}")
+            logger.debug(f"Comparing with AP Name: {DEFAULT_AP_NAME}, AP IP: {ap_ip_base}")
+
+            if conn_name == DEFAULT_AP_NAME and ip4_address == ap_ip_base and interface_name == 'wlan0': # Assuming wlan0 for AP
+                 logger.info(f"AP mode is active: {DEFAULT_AP_NAME} on {ip4_address}")
+                 return True, DEFAULT_AP_NAME
+        logger.debug("AP mode is not active or details do not match.")
         return False, None
 
-    def activate_ap_mode(self, ap_name="ghosthost", password="ghosthostap", ip_address="192.168.4.1/24", channel=6):
-        logger.info(f"Attempting to activate AP mode: {ap_name}")
-
-        # 1. Bring down any existing wlan0 connection
-        self.disconnect_network() # Disconnects current active on wlan0
-
-        # 2. Delete existing AP connection if it exists to ensure fresh settings
-        self._run_nmcli_command(['connection', 'delete', ap_name])
-
-        # 3. Create new AP mode connection
-        ap_cmd = [
-            'connection', 'add',
-            'type', 'wifi',
-            'con-name', ap_name,
-            'ifname', 'wlan0',
-            'mode', 'ap',
-            'ssid', ap_name,
-            '802-11-wireless.band', 'bg',
-            '802-11-wireless.channel', str(channel),
-            'wifi-sec.key-mgmt', 'wpa-psk',
-            'wifi-sec.psk', password,
-            'ipv4.method', 'shared', # Use 'shared' for NAT/DHCP for clients
-            'ipv4.addresses', ip_address
-        ]
-        # 'ipv4.method', 'manual',
-        # 'ipv4.addresses', ip_address,
-        # 'ipv4.gateway', '192.168.4.1' # Gateway is the AP itself
-
-        success_add, msg_add = self._run_nmcli_command(ap_cmd)
-        if not success_add:
-            logger.error(f"Failed to add AP connection {ap_name}: {msg_add}")
-            return False, f"Failed to add AP connection: {msg_add}"
-
-        # 4. Bring up the AP connection
-        # Short delay to ensure connection is saved before trying to bring it up
-        import time
-        time.sleep(2)
-        success_up, msg_up = self._run_nmcli_command(['connection', 'up', ap_name])
-        if success_up:
-            logger.info(f"AP mode '{ap_name}' activated successfully.")
-            return True, f"AP mode '{ap_name}' activated."
-        else:
-            logger.error(f"Failed to bring up AP connection {ap_name}: {msg_up}")
-            # Clean up by deleting the failed AP connection
-            self._run_nmcli_command(['connection', 'delete', ap_name])
-            return False, f"Failed to bring up AP connection: {msg_up}"
-
-    def deactivate_ap_mode(self, ap_name="ghosthost"):
-        logger.info(f"Attempting to deactivate AP mode: {ap_name}")
-        # Bring down and delete the AP connection
-        success_down, msg_down = self._run_nmcli_command(['connection', 'down', ap_name])
-        success_del, msg_del = self._run_nmcli_command(['connection', 'delete', ap_name])
-        
-        if success_down or "not found" in str(msg_down).lower() or "unknown connection" in str(msg_down).lower():
-            logger.info(f"AP mode '{ap_name}' deactivated (or was not active).")
-            # Optionally, try to bring up a general autoconnect wifi connection
-            # This is a bit speculative, might need specific logic to choose which one
-            self._run_nmcli_command(['connection', 'up', 'default'], use_sudo=True) # Or iterate saved connections
-            return True, f"AP mode '{ap_name}' deactivated."
-        else:
-            logger.error(f"Failed to deactivate AP mode {ap_name}: {msg_down} / {msg_del}")
-            return False, f"Failed to deactivate AP: {msg_down}" 
+# Removed activate_ap_mode and deactivate_ap_mode methods as requested.
+# The button-based ap_mode_manager.py now handles activation.
+# The connect_network method, when called in AP mode, will use 
+# ap_mode_manager.switch_to_client_mode to deactivate AP and connect to client Wi-Fi. 

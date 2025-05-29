@@ -50,6 +50,7 @@ The Ghost Host application runs an animatronic that provides audio output, motor
 | 18   | DRV8833 #1 IN4 (Torso) |
 | 22   | DRV8833 #2 IN1 (Mouth) |
 | 23   | DRV8833 #2 IN2 (Mouth) |
+| 21   | AP mode switch         |
 
 **GPIO Setup Summary:**
 
@@ -62,14 +63,14 @@ The Ghost Host application runs an animatronic that provides audio output, motor
 * Accessible at `ghosthost.local:8000`
 * Volume configuration and showing the current setting
 * Cooldown period after main.py completes configuration. Should show the current value.
-* Choosing the audio file to be played ( in /SoundFiles). This should also include the complimentary .json timestamp file. It also should show the current setting.
+* Choosing the audio file to be played ( in /SoundFiles). This should also include the complimentary .json timestamp file if it exists. If the timestamp .json file does not exist, then A checkbox should be included to automatically have the timestamp .json file created using the /tools/elevenlabs_stt_timestamps.py script. It also should show the current setting. 
 * Audio & timestamp file management (upload/delete)
 * WiFi network selection and password configuration
 * Network configuration section should include the ability to choose from available networks, add/delete from a list of My Networks. See the attached image for reference.
 
 **Network Management:**
 
-* 10-second push button hold activates AP mode for network configuration.
+* 10-second push of the AP mode switch's button activates AP mode for network configuration.
 * Scripts to use NetworkManager cli commands to manage the WIFI connection. 
 
 ### 2.2 Event Handling Logic
