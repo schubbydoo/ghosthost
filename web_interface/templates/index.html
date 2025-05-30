@@ -84,6 +84,15 @@
                         <button class="btn btn-secondary" id="btn-set-volume">Set Volume</button>
                     </div>
                 </div>
+                <!-- Cooldown Period Control -->
+                <div class="mb-3">
+                    <label for="cooldown-period-input" class="form-label">Sensor Cooldown Period (seconds)</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="cooldown-period-input" min="0" max="600" step="1" value="30">
+                        <button class="btn btn-secondary" id="btn-set-cooldown">Set Cooldown</button>
+                    </div>
+                    <div id="cooldown-status" class="form-text"></div>
+                </div>
             </div>
         </div>
         <!-- End Audio Management Section -->

@@ -1,5 +1,5 @@
 audio:
-  default_file: HMGreeting.wav
+  default_file: Haunted_Gallery_Greeting.wav
   soundfiles_dir: SoundFiles
   volume: 100
 hardware:
@@ -31,7 +31,7 @@ network:
     timeout: 300
   fallback_ssid: ''
 sensors:
-  cooldown_period: 30
+  cooldown_period: 15
   debounce_time: 0.2
 web:
   debug: false

@@ -62,7 +62,7 @@ The Ghost Host application runs an animatronic that provides audio output, motor
 
 * Accessible at `ghosthost.local:8000`
 * Volume configuration and showing the current setting
-* Cooldown period after main.py completes configuration. Should show the current value.
+* Cooldown period after main.py completes configuration. Should show the current value and be configurable in the Audio Management section of the WebUI. The user can set the sensor cooldown period (in seconds) from the web interface.
 * Choosing the audio file to be played ( in /SoundFiles). This should also include the complimentary .json timestamp file if it exists. If the timestamp .json file does not exist, then A checkbox should be included to automatically have the timestamp .json file created using the /tools/elevenlabs_stt_timestamps.py script. It also should show the current setting. 
 * Audio & timestamp file management (upload/delete)
 * WiFi network selection and password configuration
@@ -76,7 +76,7 @@ The Ghost Host application runs an animatronic that provides audio output, motor
 ### 2.2 Event Handling Logic
 
 * Debounce logic for handling simultaneous/sequential sensor triggers.
-* Sensors ignored during audio playback with configurable cooldown.
+* Sensors ignored during audio playback with configurable cooldown (now user-configurable via the WebUI).
 
 ### 2.3 Output and Response
 

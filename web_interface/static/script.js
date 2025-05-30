@@ -446,13 +446,51 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- COOLDOWN PERIOD LOGIC ---
+    const cooldownInput = document.getElementById('cooldown-period-input');
+    const btnSetCooldown = document.getElementById('btn-set-cooldown');
+    const cooldownStatus = document.getElementById('cooldown-status');
+
+    function loadCooldown() {
+        fetch('/api/config/cooldown')
+            .then(res => res.json())
+            .then(data => {
+                if (cooldownInput) cooldownInput.value = data.cooldown_period;
+            })
+            .catch(() => {
+                if (cooldownStatus) cooldownStatus.textContent = 'Error loading cooldown value.';
+            });
+    }
+
+    if (btnSetCooldown) {
+        btnSetCooldown.addEventListener('click', function() {
+            const value = parseInt(cooldownInput.value, 10);
+            fetch('/api/config/cooldown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cooldown_period: value })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (cooldownStatus) cooldownStatus.textContent = 'Cooldown updated!';
+                } else {
+                    if (cooldownStatus) cooldownStatus.textContent = data.error || 'Failed to update cooldown.';
+                }
+            })
+            .catch(() => {
+                if (cooldownStatus) cooldownStatus.textContent = 'Request error.';
+            });
+        });
+    }
+
     // Initial data loads
     loadStatus(); // This will also trigger initial volume load if needed
     loadAudioFiles();
     loadWiFiNetworks(); // Load WiFi networks on page load
 
-    // Optional: Auto-refresh status periodically
-    // setInterval(loadStatus, 15000); // Refresh status every 15 seconds
+    // Call loadCooldown on page load
+    loadCooldown();
 
     function generateTimestamps(filename) {
         console.log("generateTimestamps called for:", filename);

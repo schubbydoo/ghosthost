@@ -251,6 +251,21 @@ def system_reboot():
         app.logger.error(f"An unexpected error occurred during reboot: {e}")
         return jsonify({'success': False, 'message': f'An unexpected error occurred: {str(e)}'}), 500
 
+@app.route('/api/config/cooldown', methods=['GET'])
+def get_cooldown_api():
+    cooldown = config.get('sensors.cooldown_period', 30)
+    return jsonify({'cooldown_period': cooldown})
+
+@app.route('/api/config/cooldown', methods=['POST'])
+def set_cooldown_api():
+    data = request.get_json()
+    cooldown = data.get('cooldown_period')
+    if cooldown is None or not isinstance(cooldown, int) or cooldown < 0 or cooldown > 600:
+        return jsonify({'error': 'Invalid cooldown value (must be int 0-600 seconds)'}), 400
+    config.set('sensors.cooldown_period', cooldown)
+    config.save_config()
+    return jsonify({'success': True, 'cooldown_period': cooldown})
+
 if __name__ == '__main__':
     app.run(host=config.get('web.host', '0.0.0.0'), 
             port=config.get('web.port', 8000), 
