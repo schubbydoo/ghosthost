@@ -22,3 +22,9 @@ __pycache__/
 .bashrc
 .profile
 .env
+.venv
+# Ignore Sound files directory
+/SoundFiles
+# Ignore Cloned Repos
+/ZoltarSpeaks
+
