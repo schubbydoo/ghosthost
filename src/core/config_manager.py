@@ -100,6 +100,10 @@ class ConfigManager:
         """Get web interface configuration"""
         return self.get('web', {})
     
+    def get_idle_behavior_settings(self) -> Dict[str, Any]:
+        """Get idle behavior configuration"""
+        return self.get('idle_behavior', {})
+    
     def _get_default_config(self) -> Dict[str, Any]:
         """Return minimal default configuration if file loading fails"""
         return {
@@ -144,6 +148,11 @@ class ConfigManager:
                 'host': '0.0.0.0',
                 'port': 8000,
                 'debug': False
+            },
+            'idle_behavior': {
+                'enabled': False,
+                'interval_seconds': 120,
+                'duration_seconds': 5
             },
             'logging': {
                 'level': 'INFO',

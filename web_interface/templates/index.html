@@ -97,6 +97,30 @@
         </div>
         <!-- End Audio Management Section -->
 
+        <!-- Idle Behavior Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Idle Behavior
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="idle-enabled">
+                    <label class="form-check-label" for="idle-enabled">Enable Look-Around Idle Behavior</label>
+                </div>
+                <div class="mb-3">
+                    <label for="idle-interval" class="form-label">Interval Between Look-Arounds (seconds)</label>
+                    <input type="number" class="form-control" id="idle-interval" min="10" max="3600" step="1" value="120">
+                </div>
+                <div class="mb-3">
+                    <label for="idle-duration" class="form-label">Duration of Each Look-Around (seconds)</label>
+                    <input type="number" class="form-control" id="idle-duration" min="1" max="60" step="1" value="5">
+                </div>
+                <button class="btn btn-primary" id="btn-save-idle">Save Idle Behavior Settings</button>
+                <div id="idle-status" class="form-text mt-2"></div>
+            </div>
+        </div>
+        <!-- End Idle Behavior Section -->
+
         <!-- WiFi Networks Section -->
         <div class="card mb-4">
             <div class="card-header">

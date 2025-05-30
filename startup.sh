@@ -18,6 +18,9 @@ python3 /home/ghosthost/web_interface/app.py >> /home/ghosthost/logs/web_interfa
 # Start main.py
 python3 /home/ghosthost/main.py >> /home/ghosthost/logs/main.log 2>&1 &
 
+# Start look_around.py (Idle Behavior)
+python3 /home/ghosthost/look_around.py >> /home/ghosthost/logs/look_around.log 2>&1 &
+
 echo "All Ghost Host processes started at $(date)" >> "$LOGFILE" 2>&1
 
 wait 

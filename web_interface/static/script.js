@@ -484,6 +484,50 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- IDLE BEHAVIOR LOGIC ---
+    const idleEnabled = document.getElementById('idle-enabled');
+    const idleInterval = document.getElementById('idle-interval');
+    const idleDuration = document.getElementById('idle-duration');
+    const btnSaveIdle = document.getElementById('btn-save-idle');
+    const idleStatus = document.getElementById('idle-status');
+
+    function loadIdleBehavior() {
+        fetch('/api/idle_behavior')
+            .then(res => res.json())
+            .then(data => {
+                if (idleEnabled) idleEnabled.checked = !!data.enabled;
+                if (idleInterval) idleInterval.value = data.interval_seconds;
+                if (idleDuration) idleDuration.value = data.duration_seconds;
+            })
+            .catch(() => {
+                if (idleStatus) idleStatus.textContent = 'Error loading idle behavior settings.';
+            });
+    }
+
+    if (btnSaveIdle) {
+        btnSaveIdle.addEventListener('click', function() {
+            const enabled = !!idleEnabled.checked;
+            const interval = parseInt(idleInterval.value, 10);
+            const duration = parseInt(idleDuration.value, 10);
+            fetch('/api/idle_behavior', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled, interval_seconds: interval, duration_seconds: duration })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (idleStatus) idleStatus.textContent = 'Idle behavior settings updated!';
+                } else {
+                    if (idleStatus) idleStatus.textContent = data.error || 'Failed to update idle behavior.';
+                }
+            })
+            .catch(() => {
+                if (idleStatus) idleStatus.textContent = 'Request error.';
+            });
+        });
+    }
+
     // Initial data loads
     loadStatus(); // This will also trigger initial volume load if needed
     loadAudioFiles();
@@ -491,6 +535,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Call loadCooldown on page load
     loadCooldown();
+
+    // Call loadIdleBehavior on page load
+    loadIdleBehavior();
 
     function generateTimestamps(filename) {
         console.log("generateTimestamps called for:", filename);

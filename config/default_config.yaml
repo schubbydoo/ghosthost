@@ -13,6 +13,10 @@ hardware:
     motor_torso_in2: 18
     sensor_port_left: 9
     sensor_port_right: 25
+idle_behavior:
+  duration_seconds: 15
+  enabled: false
+  interval_seconds: 240
 logging:
   backup_count: 5
   file: logs/ghosthost.log

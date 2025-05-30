@@ -83,6 +83,10 @@ The Ghost Host application runs an animatronic that provides audio output, motor
 * Audio playback synchronized with mouth movement. (Zoltar project can be referenced)
 * Torso/neck directional movement based on trigger event (left/right) if two motion sensors are active. This maybe included in the webUI for identifying that they are indeed being used.
 
+### 2.4 Idle Behavior
+
+* The animatronic can periodically look around (move head/torso/eyes) when idle. This is user-configurable (enable/disable, interval, duration) in the WebUI Idle Behavior section. The setting persists across reboots. Idle movement is preempted by sensor activity (speaking/interaction takes priority). Coordination is handled via a lock file to prevent conflicts.
+
 ---
 
 ## 3. Technical Specifications

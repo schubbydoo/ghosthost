@@ -266,6 +266,30 @@ def set_cooldown_api():
     config.save_config()
     return jsonify({'success': True, 'cooldown_period': cooldown})
 
+@app.route('/api/idle_behavior', methods=['GET'])
+def get_idle_behavior_api():
+    settings = config.get_idle_behavior_settings()
+    return jsonify(settings)
+
+@app.route('/api/idle_behavior', methods=['POST'])
+def set_idle_behavior_api():
+    data = request.get_json()
+    enabled = data.get('enabled')
+    interval = data.get('interval_seconds')
+    duration = data.get('duration_seconds')
+    # Validate
+    if not isinstance(enabled, bool):
+        return jsonify({'error': 'Enabled must be boolean'}), 400
+    if not isinstance(interval, int) or interval < 10 or interval > 3600:
+        return jsonify({'error': 'Interval must be 10-3600 seconds'}), 400
+    if not isinstance(duration, int) or duration < 1 or duration > 60:
+        return jsonify({'error': 'Duration must be 1-60 seconds'}), 400
+    config.set('idle_behavior.enabled', enabled)
+    config.set('idle_behavior.interval_seconds', interval)
+    config.set('idle_behavior.duration_seconds', duration)
+    config.save_config()
+    return jsonify({'success': True, 'idle_behavior': config.get_idle_behavior_settings()})
+
 if __name__ == '__main__':
     app.run(host=config.get('web.host', '0.0.0.0'), 
             port=config.get('web.port', 8000), 
