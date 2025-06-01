@@ -14,6 +14,9 @@ class EventHandler:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
+        # State tracking
+        self.performance_active = False
+        
         # Initialize hardware controllers
         self.motor_controller = MotorController(config)
         self.audio_controller = AudioController(config)
@@ -21,9 +24,7 @@ class EventHandler:
         
         # Initialize sensor manager with this event handler as callback
         self.sensor_manager = SensorManager(config, self.handle_event)
-        
-        # State tracking
-        self.performance_active = False
+        self.sensor_manager.start_polling()
         
         self.logger.info("Event Handler initialized")
     

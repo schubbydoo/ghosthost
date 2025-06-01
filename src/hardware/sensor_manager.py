@@ -36,17 +36,24 @@ class SensorManager:
         self.logger.info("Sensor Manager initialized")
     
     def setup_gpio(self):
-        """Initialize GPIO pins for sensors and start polling thread"""
+        """Initialize GPIO pins for sensors"""
         GPIO.setmode(GPIO.BCM)
         sensor_pins = ['sensor_port_left', 'sensor_port_right']
         for pin_name in sensor_pins:
             pin = self.gpio_pins.get(pin_name)
             if pin:
-                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                if pin_name == 'sensor_port_right':
+                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                else:
+                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
                 self.last_trigger_time[pin_name] = 0
         self.logger.info("GPIO configured for sensors (polling mode)")
         self._last_pin_state = {name: 0 for name in sensor_pins}
         self._polling = True
+        # Do not start the thread here
+
+    def start_polling(self):
+        """Start the background polling thread for sensors"""
         self._poll_thread = threading.Thread(target=self._poll_sensors, daemon=True)
         self._poll_thread.start()
 

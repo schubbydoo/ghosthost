@@ -1,5 +1,5 @@
 audio:
-  default_file: Haunted_Gallery_Greeting.wav
+  default_file: HMGreeting_Mansion.wav
   soundfiles_dir: SoundFiles
   volume: 100
 hardware:
