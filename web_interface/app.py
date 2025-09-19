@@ -13,6 +13,8 @@ from src.core.config_manager import config
 from src.hardware.audio_controller import AudioController
 from src.network_management.network_manager import NetworkManager
 from src.network_management.ap_mode_manager import AP_SSID as DEFAULT_AP_SETUP_SSID
+import requests
+import uuid
 
 audio_controller = AudioController(config)
 network_manager = NetworkManager()
@@ -289,6 +291,101 @@ def set_idle_behavior_api():
     config.set('idle_behavior.duration_seconds', duration)
     config.save_config()
     return jsonify({'success': True, 'idle_behavior': config.get_idle_behavior_settings()})
+
+# --- NETWORK TRIGGERS MANAGEMENT API ---
+
+@app.route('/api/network_triggers', methods=['GET'])
+def list_network_triggers():
+    triggers = config.get('network_triggers', []) or []
+    # Hide secrets in listing; expose presence only
+    redacted = []
+    for t in triggers:
+        redacted.append({
+            'id': t.get('id'),
+            'name': t.get('name'),
+            'audio_file': t.get('audio_file'),
+            'enabled': t.get('enabled', True),
+            'secret_present': bool(t.get('secret'))
+        })
+    trigger_port = config.get('network_trigger.port', 5055)
+    return jsonify({'triggers': redacted, 'port': trigger_port})
+
+@app.route('/api/network_triggers', methods=['POST'])
+def create_network_trigger():
+    data = request.get_json()
+    name = data.get('name') or 'New Trigger'
+    audio_file = data.get('audio_file')
+    secret = (data.get('secret') or '').strip()
+    enabled = bool(data.get('enabled', True))
+    if not audio_file or audio_file not in audio_controller.list_audio_files():
+        return jsonify({'error': 'Invalid or missing audio_file'}), 400
+    new_trigger = {
+        'id': str(uuid.uuid4()),
+        'name': name,
+        'audio_file': audio_file,
+        'secret': secret,
+        'enabled': enabled
+    }
+    triggers = config.get('network_triggers', []) or []
+    triggers.append(new_trigger)
+    config.set('network_triggers', triggers)
+    config.save_config()
+    return jsonify({'success': True, 'trigger': {k: v for k, v in new_trigger.items() if k != 'secret'}})
+
+@app.route('/api/network_triggers/<trigger_id>', methods=['PUT'])
+def update_network_trigger(trigger_id):
+    data = request.get_json()
+    triggers = config.get('network_triggers', []) or []
+    for t in triggers:
+        if str(t.get('id')) == str(trigger_id):
+            if 'name' in data:
+                t['name'] = data.get('name') or t.get('name')
+            if 'audio_file' in data:
+                af = data.get('audio_file')
+                if af and af in audio_controller.list_audio_files():
+                    t['audio_file'] = af
+                else:
+                    return jsonify({'error': 'Invalid audio_file'}), 400
+            if 'enabled' in data:
+                t['enabled'] = bool(data.get('enabled'))
+            if 'secret' in data:
+                t['secret'] = (data.get('secret') or '').strip()
+            config.set('network_triggers', triggers)
+            config.save_config()
+            rt = dict(t)
+            rt.pop('secret', None)
+            return jsonify({'success': True, 'trigger': rt})
+    return jsonify({'error': 'Trigger not found'}), 404
+
+@app.route('/api/network_triggers/<trigger_id>', methods=['DELETE'])
+def delete_network_trigger(trigger_id):
+    triggers = config.get('network_triggers', []) or []
+    new_list = [t for t in triggers if str(t.get('id')) != str(trigger_id)]
+    if len(new_list) == len(triggers):
+        return jsonify({'error': 'Trigger not found'}), 404
+    config.set('network_triggers', new_list)
+    config.save_config()
+    return jsonify({'success': True})
+
+@app.route('/api/network_triggers/<trigger_id>/fire', methods=['POST'])
+def fire_network_trigger(trigger_id):
+    # Proxy to local trigger server to avoid CORS and unify auth
+    triggers = config.get('network_triggers', []) or []
+    trig = next((t for t in triggers if str(t.get('id')) == str(trigger_id)), None)
+    if not trig or not trig.get('enabled', True):
+        return jsonify({'error': 'Trigger not found'}), 404
+    port = config.get('network_trigger.port', 5055)
+    url = f'http://127.0.0.1:{port}/api/trigger/{trigger_id}/play'
+    headers = {}
+    secret = (trig.get('secret') or '').strip()
+    if secret:
+        headers['Authorization'] = f'Bearer {secret}'
+    try:
+        resp = requests.post(url, headers=headers, timeout=5)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        app.logger.error(f"Proxy fire failed: {e}")
+        return jsonify({'error': 'Failed to fire trigger'}), 500
 
 if __name__ == '__main__':
     app.run(host=config.get('web.host', '0.0.0.0'), 

@@ -50,6 +50,60 @@ class EventHandler:
         self.logger.info(f"Starting performance for sensor: {sensor_type}")
         self._start_performance(sensor_type)
     
+    def trigger_network_performance(self, audio_file: Optional[str] = None) -> dict:
+        """Start a performance initiated by a network trigger.
+
+        Returns a dict with keys: success (bool), message (str).
+        """
+        # Prevent overlap with existing performance or cooldown
+        if self.performance_active:
+            return { 'success': False, 'message': 'Performance already active' }
+        if self.sensor_manager.is_in_cooldown():
+            return { 'success': False, 'message': 'In cooldown period' }
+
+        # Determine audio file
+        selected_audio = audio_file or self.config.get('audio.default_file', 'HMGreeting.wav')
+
+        self.performance_active = True
+        try:
+            # Get audio duration
+            audio_duration = self.audio_controller.get_audio_duration(selected_audio)
+            if not audio_duration:
+                self.logger.error(f"Could not get duration for audio file: {selected_audio}")
+                self.performance_active = False
+                return { 'success': False, 'message': 'Invalid audio file' }
+
+            # Turn on eyes immediately for duration
+            self.led_controller.eyes_on_during_audio(audio_duration)
+
+            # Start audio playback with completion callback
+            audio_started = self.audio_controller.play_audio_file(
+                selected_audio,
+                self._performance_complete
+            )
+
+            if not audio_started:
+                self.logger.error("Failed to start audio playback")
+                self.led_controller.turn_off_eyes()
+                self.performance_active = False
+                return { 'success': False, 'message': 'Failed to start audio playback' }
+
+            # Start synchronized motor movements (sensor type labeled as 'network')
+            self.motor_controller.start_synchronized_movement(
+                audio_duration,
+                selected_audio,
+                'network'
+            )
+
+            self.logger.info(f"Network-triggered performance started - Duration: {audio_duration:.1f}s")
+            return { 'success': True, 'message': 'Performance started' }
+
+        except Exception as e:
+            self.logger.error(f"Error starting network-triggered performance: {e}")
+            self.performance_active = False
+            self._cleanup_performance()
+            return { 'success': False, 'message': 'Unexpected error starting performance' }
+
     def _start_performance(self, sensor_type: SensorType):
         """Start the main animatronic performance"""
         self.performance_active = True

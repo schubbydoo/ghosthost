@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnSetVolume = document.getElementById('btn-set-volume');
     const currentDefaultAudio = document.getElementById('current-default-audio');
     const currentVolumeSpan = document.getElementById('current-volume');
+    const btnAddTrigger = document.getElementById('btn-add-trigger');
+    const triggerStatus = document.getElementById('trigger-status');
+    const tableTriggers = document.getElementById('table-triggers');
 
     // --- STATUS SECTION LOGIC ---
     const statusNetwork = document.getElementById('status-network');
@@ -277,6 +280,40 @@ document.addEventListener('DOMContentLoaded', function() {
         if (element) {
             element.textContent = message;
             element.className = isSuccess ? 'form-text text-success' : 'form-text text-danger';
+        }
+    }
+
+    function displayTriggerMessage(message, isError = false) {
+        if (triggerStatus) {
+            triggerStatus.textContent = message;
+            triggerStatus.className = `form-text ${isError ? 'text-danger' : 'text-success'}`;
+            setTimeout(() => { triggerStatus.textContent = ''; }, 4000);
+        }
+    }
+
+    async function copyToClipboard(text) {
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (e) {
+            // fall through to legacy method
+        }
+        try {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            textArea.style.top = '0';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            return successful;
+        } catch (e) {
+            return false;
         }
     }
 
@@ -599,4 +636,173 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // --- NETWORK TRIGGERS UI LOGIC ---
+    async function loadTriggers() {
+        if (!tableTriggers) return;
+        try {
+            const res = await fetch('/api/network_triggers');
+            const data = await res.json();
+            const tbody = tableTriggers.querySelector('tbody');
+            tbody.innerHTML = '';
+            const filesRes = await fetch('/api/audio/files');
+            const filesData = await filesRes.json();
+            const fileMap = new Map(filesData.files.map(f => [f.filename, f]));
+            (data.triggers || []).forEach(tr => {
+                const row = document.createElement('tr');
+                // Name
+                const tdName = document.createElement('td');
+                const inputName = document.createElement('input');
+                inputName.type = 'text';
+                inputName.className = 'form-control form-control-sm';
+                inputName.value = tr.name || '';
+                tdName.appendChild(inputName);
+                row.appendChild(tdName);
+                // Audio select
+                const tdAudio = document.createElement('td');
+                const selectAudio = document.createElement('select');
+                selectAudio.className = 'form-select form-select-sm';
+                filesData.files.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.filename;
+                    opt.textContent = f.filename;
+                    if (f.filename === tr.audio_file) opt.selected = true;
+                    selectAudio.appendChild(opt);
+                });
+                tdAudio.appendChild(selectAudio);
+                row.appendChild(tdAudio);
+                // Timestamp column
+                const tdTs = document.createElement('td');
+                const info = fileMap.get(tr.audio_file);
+                if (info && info.has_timestamps) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge bg-info';
+                    badge.textContent = 'Has Timestamps';
+                    tdTs.appendChild(badge);
+                } else {
+                    const btnGen = document.createElement('button');
+                    btnGen.className = 'btn btn-sm btn-info';
+                    btnGen.textContent = 'Gen Timestamps';
+                    btnGen.addEventListener('click', () => generateTimestamps(selectAudio.value));
+                    tdTs.appendChild(btnGen);
+                }
+                row.appendChild(tdTs);
+                // Enabled toggle
+                const tdEnabled = document.createElement('td');
+                const chkEnabled = document.createElement('input');
+                chkEnabled.type = 'checkbox';
+                chkEnabled.className = 'form-check-input';
+                chkEnabled.checked = !!tr.enabled;
+                tdEnabled.appendChild(chkEnabled);
+                row.appendChild(tdEnabled);
+                // ID column
+                const tdId = document.createElement('td');
+                const codeId = document.createElement('code');
+                codeId.textContent = tr.id;
+                tdId.appendChild(codeId);
+                row.appendChild(tdId);
+                // Actions (Save + dropdown for others)
+                const tdActions = document.createElement('td');
+                const btnSave = document.createElement('button');
+                btnSave.className = 'btn btn-sm btn-success me-2';
+                btnSave.textContent = 'Save';
+                btnSave.addEventListener('click', async () => {
+                    try {
+                        const payload = { name: inputName.value, audio_file: selectAudio.value, enabled: chkEnabled.checked };
+                        const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        const result = await resp.json();
+                        if (resp.ok && result.success) {
+                            displayTriggerMessage('Trigger saved');
+                            loadTriggers();
+                            loadAudioFiles();
+                        } else {
+                            displayTriggerMessage(result.error || 'Failed to save trigger', true);
+                        }
+                    } catch (e) { displayTriggerMessage('Save failed', true); }
+                });
+                const group = document.createElement('div');
+                group.className = 'btn-group';
+                const btnMore = document.createElement('button');
+                btnMore.type = 'button';
+                btnMore.className = 'btn btn-sm btn-secondary dropdown-toggle';
+                btnMore.setAttribute('data-bs-toggle', 'dropdown');
+                btnMore.textContent = 'More';
+                const menu = document.createElement('ul');
+                menu.className = 'dropdown-menu';
+                const mkItem = (label, onClick, isDanger=false) => {
+                    const li = document.createElement('li');
+                    const a = document.createElement('a');
+                    a.href = '#';
+                    a.className = 'dropdown-item' + (isDanger ? ' text-danger' : '');
+                    a.textContent = label;
+                    a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+                    li.appendChild(a);
+                    return li;
+                };
+                menu.appendChild(mkItem('Test Trigger', async () => {
+                    try {
+                        const resp = await fetch(`/api/network_triggers/${tr.id}/fire`, { method: 'POST' });
+                        const result = await resp.json();
+                        if (resp.ok && result.success) displayTriggerMessage('Trigger fired');
+                        else displayTriggerMessage(result.message || result.error || 'Busy/failed', true);
+                    } catch (e) { displayTriggerMessage('Fire failed', true); }
+                }));
+                menu.appendChild(mkItem('Copy ID', async () => {
+                    const ok = await copyToClipboard(tr.id);
+                    displayTriggerMessage(ok ? 'ID copied' : 'Copy failed', !ok);
+                }));
+                menu.appendChild(mkItem('Copy URL', async () => {
+                    try {
+                        const portRes = await fetch('/api/network_triggers');
+                        const portData = await portRes.json();
+                        const host = window.location.hostname || 'ghosthost.local';
+                        const url = `http://${host}:${portData.port}/api/trigger/${tr.id}/play`;
+                        const ok = await copyToClipboard(url);
+                        displayTriggerMessage(ok ? 'URL copied' : 'Copy failed', !ok);
+                    } catch (e) { displayTriggerMessage('Copy failed', true); }
+                }));
+                menu.appendChild(mkItem('Delete', async () => {
+                    if (!confirm('Delete this trigger?')) return;
+                    try {
+                        const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'DELETE' });
+                        const result = await resp.json();
+                        if (resp.ok && result.success) { displayTriggerMessage('Trigger deleted'); loadTriggers(); }
+                        else displayTriggerMessage(result.error || 'Delete failed', true);
+                    } catch (e) { displayTriggerMessage('Delete failed', true); }
+                }, true));
+                group.appendChild(btnMore);
+                group.appendChild(menu);
+                tdActions.appendChild(btnSave);
+                tdActions.appendChild(group);
+                row.appendChild(tdActions);
+                tbody.appendChild(row);
+            });
+        } catch (e) {
+            console.error('Failed to load triggers', e);
+        }
+    }
+
+    if (btnAddTrigger) {
+        btnAddTrigger.addEventListener('click', async () => {
+            try {
+                const filesRes = await fetch('/api/audio/files');
+                const filesData = await filesRes.json();
+                const defaultAudio = (filesData.files && filesData.files[0] && filesData.files[0].filename) || null;
+                if (!defaultAudio) { displayTriggerMessage('No audio files available. Upload first.', true); return; }
+                const name = prompt('Enter trigger name:', 'New Trigger');
+                if (name === null) return;
+                const audio = prompt('Enter audio filename to assign (exact name):', defaultAudio);
+                if (audio === null) return;
+                const secret = prompt('Optional secret (leave blank for none):', '');
+                const payload = { name, audio_file: audio, secret: secret || '', enabled: true };
+                const resp = await fetch('/api/network_triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const result = await resp.json();
+                if (resp.ok && result.success) { displayTriggerMessage('Trigger created'); loadTriggers(); }
+                else displayTriggerMessage(result.error || 'Create failed', true);
+            } catch (e) { displayTriggerMessage('Create failed', true); }
+        });
+    }
+
+    // Load triggers on page load
+    loadTriggers();
 }); 

@@ -149,6 +149,11 @@ class ConfigManager:
                 'port': 8000,
                 'debug': False
             },
+            'network_trigger': {
+                'enabled': True,
+                'port': 5055
+            },
+            'network_triggers': [],
             'idle_behavior': {
                 'enabled': False,
                 'interval_seconds': 120,

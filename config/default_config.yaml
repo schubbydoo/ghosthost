@@ -1,5 +1,5 @@
 audio:
-  default_file: HMGreeting_Mansion.wav
+  default_file: TeenaAndLauraBDayWish.wav
   soundfiles_dir: SoundFiles
   volume: 100
 hardware:
@@ -15,8 +15,8 @@ hardware:
     sensor_port_right: 25
 idle_behavior:
   duration_seconds: 15
-  enabled: false
-  interval_seconds: 240
+  enabled: true
+  interval_seconds: 60
 logging:
   backup_count: 5
   file: logs/ghosthost.log
@@ -34,6 +34,15 @@ network:
     subnet: 192.168.4.0/24
     timeout: 300
   fallback_ssid: ''
+network_trigger:
+  enabled: true
+  port: 5055
+network_triggers:
+- audio_file: HMGreeting_Mansion.wav
+  enabled: true
+  id: cd23f205-80a7-45bc-be68-f5f5b5ae1997
+  name: Phone_Trigger
+  secret: ''
 sensors:
   cooldown_period: 15
   debounce_time: 0.2

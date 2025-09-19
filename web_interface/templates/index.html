@@ -97,6 +97,37 @@
         </div>
         <!-- End Audio Management Section -->
 
+        <!-- Network Triggers Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">
+                Network Triggers
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <button class="btn btn-primary" id="btn-add-trigger">Add Network Trigger</button>
+                </div>
+                <div id="trigger-status" class="form-text mb-2"></div>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="table-triggers">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Audio File</th>
+                                <th>Timestamp</th>
+                                <th>Enabled</th>
+                                <th>ID</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- End Network Triggers Section -->
+
         <!-- Idle Behavior Section -->
         <div class="card mb-4">
             <div class="card-header">

@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
 from src.core.config_manager import config
 from src.core.event_handler import EventHandler
+from src.core.trigger_server import TriggerServer
 
 # Global event handler instance for cleanup
 event_handler = None
@@ -71,6 +72,14 @@ def main():
         # Initialize event handler (this sets up all hardware)
         logger.info("Initializing hardware systems...")
         event_handler = EventHandler(config)
+        # Start trigger server
+        try:
+            if config.get('network_trigger.enabled', True):
+                trigger_server = TriggerServer(event_handler, config)
+                trigger_server.start()
+                logger.info("Network Trigger Server started")
+        except Exception as e:
+            logger.error(f"Failed to start Trigger Server: {e}")
         
         # Flash eyes to indicate system ready
         event_handler.led_controller.flash_eyes(3, 0.2)
