@@ -6,6 +6,7 @@ Lightweight HTTP server to accept network trigger requests and start playback.
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -40,6 +41,77 @@ class TriggerServer:
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps(payload).encode('utf-8'))
+
+            def do_GET(self):
+                """
+                What this prop is doing right now, so a caller can tell 'busy'
+                from 'broken'.
+
+                Added 2026-08-25 for the SFX box. Purely additive — the POST
+                path below is untouched. It answers two questions that were
+                previously unanswerable from outside, and which a caller
+                otherwise has to guess at:
+
+                  * am I going to be refused, and for how long? The cooldown
+                    starts when the AUDIO FINISHES, not when the trigger
+                    arrives, so 'time since I last fired it' is not enough to
+                    work it out.
+                  * what can I ask for? Copying trigger UUIDs by hand between
+                    boxes is how the wrong one ends up wired to the wrong
+                    button.
+
+                Trigger ids are only listed when the caller could already
+                obtain them: if no trigger has a secret then POST is
+                unauthenticated anyway and the ids are effectively public; if
+                any trigger does have one, listing ids requires presenting a
+                valid secret. Names are always listed, so the endpoint is still
+                useful for a human without handing out the keys.
+                """
+                parsed = urlparse(self.path)
+                if parsed.path.strip('/') != 'api/status':
+                    return self._json_response(404, {'success': False,
+                                                     'message': 'Not found'})
+
+                eh = outer.event_handler
+                sm = eh.sensor_manager
+                cooling = sm.is_in_cooldown()
+                remaining = 0.0
+                if cooling:
+                    remaining = max(0.0, sm.cooldown_end_time - time.time())
+
+                triggers = outer._get_triggers()
+                secrets = {(t.get('secret') or '').strip()
+                           for t in triggers} - {''}
+                may_list_ids = not secrets
+                if secrets:
+                    auth_header = self.headers.get('Authorization', '')
+                    if auth_header.startswith('Bearer '):
+                        if auth_header[len('Bearer '):].strip() in secrets:
+                            may_list_ids = True
+                    q = parse_qs(parsed.query)
+                    if 'token' in q and q['token'][0] in secrets:
+                        may_list_ids = True
+
+                return self._json_response(200, {
+                    'success': True,
+                    'kind': 'ghosthost',
+                    'performing': bool(eh.performance_active),
+                    'cooling_down': bool(cooling),
+                    'cooldown_remaining': round(remaining, 1),
+                    'cooldown_period': sm.sensor_settings.get(
+                        'cooldown_period', 30),
+                    # The fact a caller cannot deduce: the clock starts at the
+                    # END of the audio, so a prop is unavailable for the audio
+                    # length PLUS this.
+                    'cooldown_starts': 'after the audio finishes',
+                    'triggers': [{
+                        'id': t.get('id') if may_list_ids else None,
+                        'name': t.get('name'),
+                        'enabled': t.get('enabled', True),
+                        'audio_file': t.get('audio_file'),
+                        'secret_set': bool((t.get('secret') or '').strip()),
+                    } for t in triggers],
+                })
 
             def do_POST(self):
                 parsed = urlparse(self.path)

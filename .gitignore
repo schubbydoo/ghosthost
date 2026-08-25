@@ -28,3 +28,10 @@ __pycache__/
 # Ignore Cloned Repos
 /ZoltarSpeaks
 
+
+# SSH access control — this repo IS the home directory, so these land in it.
+# authorized_keys is not a secret, but who may log in is not repo content.
+.ssh/
+
+# Ad-hoc backups taken before editing a live file
+*.bak-*
