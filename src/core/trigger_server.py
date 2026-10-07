@@ -109,6 +109,7 @@ class TriggerServer:
                         'name': t.get('name'),
                         'enabled': t.get('enabled', True),
                         'audio_file': t.get('audio_file'),
+                        'pool_id': t.get('pool_id') or None,
                         'secret_set': bool((t.get('secret') or '').strip()),
                     } for t in triggers],
                 })
@@ -154,9 +155,17 @@ class TriggerServer:
                     except Exception:
                         pass
 
-                audio_file = audio_override or trigger.get('audio_file') or outer.config.get('audio.default_file')
+                # Explicit override > pool (random pick) > fixed file > default.
+                # With a pool assigned, trigger_network_performance picks from it.
+                if audio_override:
+                    audio_file, pool_id = audio_override, None
+                elif trigger.get('pool_id'):
+                    audio_file, pool_id = None, trigger.get('pool_id')
+                else:
+                    audio_file = trigger.get('audio_file') or outer.config.get('audio.default_file')
+                    pool_id = None
 
-                result = outer.event_handler.trigger_network_performance(audio_file)
+                result = outer.event_handler.trigger_network_performance(audio_file, pool_id)
                 if result.get('success'):
                     return self._json_response(200, result)
                 msg = result.get('message', 'Busy')

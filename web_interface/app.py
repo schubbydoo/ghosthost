@@ -292,6 +292,97 @@ def set_idle_behavior_api():
     config.save_config()
     return jsonify({'success': True, 'idle_behavior': config.get_idle_behavior_settings()})
 
+# --- GREETING POOLS API ---
+
+SENSOR_PORTS = ['sensor_port_left', 'sensor_port_right']
+
+def _find_pool(pool_id):
+    return next((p for p in config.get('greeting_pools', []) or []
+                 if str(p.get('id')) == str(pool_id)), None)
+
+def _clean_pool_files(files):
+    """Keep only existing audio files, without duplicates, preserving order."""
+    available = set(audio_controller.list_audio_files())
+    if not isinstance(files, list):
+        return None
+    return [f for f in dict.fromkeys(files) if f in available]
+
+@app.route('/api/greeting_pools', methods=['GET'])
+def list_greeting_pools():
+    config.load_config()
+    assignments = config.get('sensor_pools', {}) or {}
+    return jsonify({
+        'pools': config.get('greeting_pools', []) or [],
+        'sensor_pools': {port: assignments.get(port) or '' for port in SENSOR_PORTS},
+    })
+
+@app.route('/api/greeting_pools', methods=['POST'])
+def create_greeting_pool():
+    config.load_config()
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip() or 'New Pool'
+    files = _clean_pool_files(data.get('files', []))
+    if files is None:
+        return jsonify({'error': 'files must be a list'}), 400
+    pool = {'id': str(uuid.uuid4()), 'name': name, 'files': files}
+    pools = config.get('greeting_pools', []) or []
+    pools.append(pool)
+    config.set('greeting_pools', pools)
+    config.save_config()
+    return jsonify({'success': True, 'pool': pool})
+
+@app.route('/api/greeting_pools/<pool_id>', methods=['PUT'])
+def update_greeting_pool(pool_id):
+    config.load_config()
+    data = request.get_json() or {}
+    pool = _find_pool(pool_id)
+    if not pool:
+        return jsonify({'error': 'Pool not found'}), 404
+    if 'name' in data:
+        pool['name'] = (data.get('name') or '').strip() or pool.get('name')
+    if 'files' in data:
+        files = _clean_pool_files(data.get('files'))
+        if files is None:
+            return jsonify({'error': 'files must be a list'}), 400
+        pool['files'] = files
+    config.save_config()
+    return jsonify({'success': True, 'pool': pool})
+
+@app.route('/api/greeting_pools/<pool_id>', methods=['DELETE'])
+def delete_greeting_pool(pool_id):
+    config.load_config()
+    pools = config.get('greeting_pools', []) or []
+    new_pools = [p for p in pools if str(p.get('id')) != str(pool_id)]
+    if len(new_pools) == len(pools):
+        return jsonify({'error': 'Pool not found'}), 404
+    config.set('greeting_pools', new_pools)
+    # Unassign from sensors and network triggers; they fall back to their file/default
+    assignments = config.get('sensor_pools', {}) or {}
+    for port in list(assignments):
+        if str(assignments[port]) == str(pool_id):
+            assignments[port] = ''
+    config.set('sensor_pools', assignments)
+    for t in config.get('network_triggers', []) or []:
+        if str(t.get('pool_id')) == str(pool_id):
+            t['pool_id'] = ''
+    config.save_config()
+    return jsonify({'success': True})
+
+@app.route('/api/sensor_pools', methods=['POST'])
+def set_sensor_pool():
+    """Assign a pool (or '' for none) to a sensor port: {sensor, pool_id}"""
+    config.load_config()
+    data = request.get_json() or {}
+    sensor = data.get('sensor')
+    pool_id = data.get('pool_id') or ''
+    if sensor not in SENSOR_PORTS:
+        return jsonify({'error': 'Invalid sensor'}), 400
+    if pool_id and not _find_pool(pool_id):
+        return jsonify({'error': 'Invalid pool_id'}), 400
+    config.set(f'sensor_pools.{sensor}', pool_id)
+    config.save_config()
+    return jsonify({'success': True, 'sensor': sensor, 'pool_id': pool_id})
+
 # --- NETWORK TRIGGERS MANAGEMENT API ---
 
 @app.route('/api/network_triggers', methods=['GET'])
@@ -304,6 +395,7 @@ def list_network_triggers():
             'id': t.get('id'),
             'name': t.get('name'),
             'audio_file': t.get('audio_file'),
+            'pool_id': t.get('pool_id') or '',
             'enabled': t.get('enabled', True),
             'secret_present': bool(t.get('secret'))
         })
@@ -317,12 +409,16 @@ def create_network_trigger():
     audio_file = data.get('audio_file')
     secret = (data.get('secret') or '').strip()
     enabled = bool(data.get('enabled', True))
+    pool_id = data.get('pool_id') or ''
+    if pool_id and not _find_pool(pool_id):
+        return jsonify({'error': 'Invalid pool_id'}), 400
     if not audio_file or audio_file not in audio_controller.list_audio_files():
         return jsonify({'error': 'Invalid or missing audio_file'}), 400
     new_trigger = {
         'id': str(uuid.uuid4()),
         'name': name,
         'audio_file': audio_file,
+        'pool_id': pool_id,
         'secret': secret,
         'enabled': enabled
     }
@@ -346,6 +442,11 @@ def update_network_trigger(trigger_id):
                     t['audio_file'] = af
                 else:
                     return jsonify({'error': 'Invalid audio_file'}), 400
+            if 'pool_id' in data:
+                pid = data.get('pool_id') or ''
+                if pid and not _find_pool(pid):
+                    return jsonify({'error': 'Invalid pool_id'}), 400
+                t['pool_id'] = pid
             if 'enabled' in data:
                 t['enabled'] = bool(data.get('enabled'))
             if 'secret' in data:

@@ -97,6 +97,35 @@
         </div>
         <!-- End Audio Management Section -->
 
+        <!-- Greeting Pools Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">
+                Greeting Pools
+            </div>
+            <div class="card-body">
+                <p class="form-text">A pool plays its greetings in random order, using every greeting once before any repeats. Each greeting keeps its own mouth-sync timestamps, so generate timestamps for every file in a pool.</p>
+                <div class="mb-3">
+                    <button class="btn btn-primary" id="btn-add-pool">Add Pool</button>
+                </div>
+                <div id="pool-status" class="form-text mb-2"></div>
+                <div id="pool-list"><!-- Populated by JS --></div>
+                <hr>
+                <h5>Sensor Assignments</h5>
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label for="select-pool-sensor_port_left" class="form-label">Left Sensor Port</label>
+                        <select class="form-select" id="select-pool-sensor_port_left" data-sensor="sensor_port_left"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="select-pool-sensor_port_right" class="form-label">Right Sensor Port</label>
+                        <select class="form-select" id="select-pool-sensor_port_right" data-sensor="sensor_port_right"></select>
+                    </div>
+                </div>
+                <div class="form-text">Sensors with no pool play the default audio. Network triggers choose their pool in the table below.</div>
+            </div>
+        </div>
+        <!-- End Greeting Pools Section -->
+
         <!-- Network Triggers Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
@@ -113,6 +142,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Audio File</th>
+                                <th>Pool</th>
                                 <th>Timestamp</th>
                                 <th>Enabled</th>
                                 <th>ID</th>

@@ -7,6 +7,7 @@ A Raspberry Pi-based animatronic control system that provides synchronized audio
 - **Sensor Integration**: PIR motion sensors, push button, and pressure pad
 - **Motor Control**: Head, torso, and mouth motors with synchronized movements
 - **Audio Playback**: Synchronized mouth movement with word timestamps
+- **Greeting Pools**: Assign a pool of greetings to a sensor port or network trigger; they play in random order (every greeting once before any repeats)
 - **LED Eyes**: Dynamic eye lighting with various effects
 - **Web Interface**: Configuration and file management via web UI
 - **Network Management**: WiFi configuration with AP mode fallback

@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Optional
 from src.hardware import SensorManager, SensorType, MotorController, AudioController, LEDController
+from src.core.greeting_pool import GreetingPicker
 
 class EventHandler:
     def __init__(self, config):
@@ -21,6 +22,7 @@ class EventHandler:
         self.motor_controller = MotorController(config)
         self.audio_controller = AudioController(config)
         self.led_controller = LEDController(config)
+        self.greeting_picker = GreetingPicker(config, self.audio_controller)
         
         # Initialize sensor manager with this event handler as callback
         self.sensor_manager = SensorManager(config, self.handle_event)
@@ -50,9 +52,20 @@ class EventHandler:
         self.logger.info(f"Starting performance for sensor: {sensor_type}")
         self._start_performance(sensor_type)
     
-    def trigger_network_performance(self, audio_file: Optional[str] = None) -> dict:
+    def _sensor_audio_file(self, sensor_type: SensorType) -> str:
+        """Greeting for a sensor: random pick from its assigned pool, else the default file."""
+        # The web UI runs in another process and edits the config file
+        self.config.load_config()
+        pool_id = self.config.get(f'sensor_pools.{sensor_type.value}')
+        return (self.greeting_picker.pick(pool_id)
+                or self.config.get('audio.default_file', 'HMGreeting.wav'))
+
+    def trigger_network_performance(self, audio_file: Optional[str] = None,
+                                    pool_id: Optional[str] = None) -> dict:
         """Start a performance initiated by a network trigger.
 
+        An explicit audio_file wins; otherwise a greeting is picked from pool_id
+        if given; otherwise the default file is used.
         Returns a dict with keys: success (bool), message (str).
         """
         # Prevent overlap with existing performance or cooldown
@@ -62,7 +75,9 @@ class EventHandler:
             return { 'success': False, 'message': 'In cooldown period' }
 
         # Determine audio file
-        selected_audio = audio_file or self.config.get('audio.default_file', 'HMGreeting.wav')
+        selected_audio = (audio_file
+                          or self.greeting_picker.pick(pool_id)
+                          or self.config.get('audio.default_file', 'HMGreeting.wav'))
 
         self.performance_active = True
         try:
@@ -110,7 +125,7 @@ class EventHandler:
         
         try:
             # Get audio file to play
-            audio_file = self.config.get('audio.default_file', 'HMGreeting.wav')
+            audio_file = self._sensor_audio_file(sensor_type)
             
             # Get audio duration
             audio_duration = self.audio_controller.get_audio_duration(audio_file)

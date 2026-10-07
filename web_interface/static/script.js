@@ -648,6 +648,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const filesRes = await fetch('/api/audio/files');
             const filesData = await filesRes.json();
             const fileMap = new Map(filesData.files.map(f => [f.filename, f]));
+            const pools = await fetchPools();
             (data.triggers || []).forEach(tr => {
                 const row = document.createElement('tr');
                 // Name
@@ -671,6 +672,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 tdAudio.appendChild(selectAudio);
                 row.appendChild(tdAudio);
+                // Pool select (overrides the fixed audio file when set)
+                const tdPool = document.createElement('td');
+                const selectPool = document.createElement('select');
+                selectPool.className = 'form-select form-select-sm';
+                fillPoolOptions(selectPool, pools, tr.pool_id, '(none - use file)');
+                const syncPoolState = () => { selectAudio.disabled = !!selectPool.value; };
+                selectPool.addEventListener('change', syncPoolState);
+                syncPoolState();
+                tdPool.appendChild(selectPool);
+                row.appendChild(tdPool);
                 // Timestamp column
                 const tdTs = document.createElement('td');
                 const info = fileMap.get(tr.audio_file);
@@ -708,7 +719,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnSave.textContent = 'Save';
                 btnSave.addEventListener('click', async () => {
                     try {
-                        const payload = { name: inputName.value, audio_file: selectAudio.value, enabled: chkEnabled.checked };
+                        const payload = { name: inputName.value, audio_file: selectAudio.value, pool_id: selectPool.value, enabled: chkEnabled.checked };
                         const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         const result = await resp.json();
                         if (resp.ok && result.success) {
@@ -802,6 +813,152 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (e) { displayTriggerMessage('Create failed', true); }
         });
     }
+
+    // --- GREETING POOLS LOGIC ---
+    const poolList = document.getElementById('pool-list');
+    const poolStatus = document.getElementById('pool-status');
+    const btnAddPool = document.getElementById('btn-add-pool');
+
+    function displayPoolMessage(message, isError = false) {
+        if (!poolStatus) return;
+        poolStatus.textContent = message;
+        poolStatus.className = 'form-text mb-2 ' + (isError ? 'text-danger' : 'text-success');
+        setTimeout(() => { poolStatus.textContent = ''; }, 4000);
+    }
+
+    async function fetchPools() {
+        try {
+            const res = await fetch('/api/greeting_pools');
+            return await res.json();
+        } catch (e) {
+            return { pools: [], sensor_pools: {} };
+        }
+    }
+
+    function fillPoolOptions(select, poolsData, selectedId, noneLabel) {
+        select.innerHTML = '';
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = noneLabel;
+        select.appendChild(none);
+        (poolsData.pools || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `${p.name} (${(p.files || []).length})`;
+            if (p.id === selectedId) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadPools() {
+        if (!poolList) return;
+        try {
+            const poolsData = await fetchPools();
+            const filesRes = await fetch('/api/audio/files');
+            const filesData = await filesRes.json();
+            poolList.innerHTML = '';
+            (poolsData.pools || []).forEach(pool => {
+                const box = document.createElement('div');
+                box.className = 'border rounded p-3 mb-3';
+
+                const nameGroup = document.createElement('div');
+                nameGroup.className = 'input-group mb-2';
+                const inputName = document.createElement('input');
+                inputName.type = 'text';
+                inputName.className = 'form-control';
+                inputName.value = pool.name || '';
+                nameGroup.appendChild(inputName);
+                box.appendChild(nameGroup);
+
+                const checks = [];
+                filesData.files.forEach(f => {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'form-check';
+                    const chk = document.createElement('input');
+                    chk.type = 'checkbox';
+                    chk.className = 'form-check-input';
+                    chk.value = f.filename;
+                    chk.checked = (pool.files || []).includes(f.filename);
+                    const lbl = document.createElement('label');
+                    lbl.className = 'form-check-label';
+                    lbl.textContent = f.filename;
+                    if (!f.has_timestamps) {
+                        const warn = document.createElement('span');
+                        warn.className = 'badge bg-warning text-dark ms-2';
+                        warn.textContent = 'No timestamps - mouth will not move';
+                        lbl.appendChild(warn);
+                    }
+                    wrap.appendChild(chk);
+                    wrap.appendChild(lbl);
+                    box.appendChild(wrap);
+                    checks.push(chk);
+                });
+
+                const actions = document.createElement('div');
+                actions.className = 'mt-2';
+                const btnSave = document.createElement('button');
+                btnSave.className = 'btn btn-sm btn-success me-2';
+                btnSave.textContent = 'Save Pool';
+                btnSave.addEventListener('click', async () => {
+                    try {
+                        const payload = { name: inputName.value, files: checks.filter(c => c.checked).map(c => c.value) };
+                        const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        const result = await resp.json();
+                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadPools(); loadTriggers(); }
+                        else displayPoolMessage(result.error || 'Save failed', true);
+                    } catch (e) { displayPoolMessage('Save failed', true); }
+                });
+                const btnDelete = document.createElement('button');
+                btnDelete.className = 'btn btn-sm btn-danger';
+                btnDelete.textContent = 'Delete Pool';
+                btnDelete.addEventListener('click', async () => {
+                    if (!confirm('Delete this pool? Sensors and triggers using it will fall back to their file/default.')) return;
+                    try {
+                        const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'DELETE' });
+                        const result = await resp.json();
+                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadPools(); loadTriggers(); }
+                        else displayPoolMessage(result.error || 'Delete failed', true);
+                    } catch (e) { displayPoolMessage('Delete failed', true); }
+                });
+                actions.appendChild(btnSave);
+                actions.appendChild(btnDelete);
+                box.appendChild(actions);
+                poolList.appendChild(box);
+            });
+
+            // Sensor assignment selects
+            document.querySelectorAll('select[data-sensor]').forEach(sel => {
+                const sensor = sel.getAttribute('data-sensor');
+                fillPoolOptions(sel, poolsData, (poolsData.sensor_pools || {})[sensor], '(none - default audio)');
+                sel.onchange = async () => {
+                    try {
+                        const resp = await fetch('/api/sensor_pools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sensor, pool_id: sel.value }) });
+                        const result = await resp.json();
+                        if (resp.ok && result.success) displayPoolMessage('Sensor assignment saved');
+                        else displayPoolMessage(result.error || 'Save failed', true);
+                    } catch (e) { displayPoolMessage('Save failed', true); }
+                };
+            });
+        } catch (e) {
+            console.error('Failed to load pools', e);
+        }
+    }
+
+    if (btnAddPool) {
+        btnAddPool.addEventListener('click', async () => {
+            const name = prompt('Enter pool name:', 'New Pool');
+            if (name === null) return;
+            try {
+                const resp = await fetch('/api/greeting_pools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, files: [] }) });
+                const result = await resp.json();
+                if (resp.ok && result.success) { displayPoolMessage('Pool created - tick the greetings to include, then Save Pool'); loadPools(); }
+                else displayPoolMessage(result.error || 'Create failed', true);
+            } catch (e) { displayPoolMessage('Create failed', true); }
+        });
+    }
+
+    // Load pools on page load
+    loadPools();
 
     // Load triggers on page load
     loadTriggers();
