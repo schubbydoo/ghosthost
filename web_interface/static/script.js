@@ -729,26 +729,62 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const res = await fetch('/api/network_triggers');
             const data = await res.json();
-            const tbody = tableTriggers.querySelector('tbody');
-            tbody.innerHTML = '';
+            tableTriggers.innerHTML = '';
             const filesRes = await fetch('/api/audio/files');
             const filesData = await filesRes.json();
             const fileMap = new Map(filesData.files.map(f => [f.filename, f]));
             const pools = await fetchPools();
+            if (!(data.triggers || []).length) {
+                tableTriggers.innerHTML = '<p class="form-text">No network triggers yet.</p>';
+            }
+            const mkField = (label, control, extra) => {
+                const col = document.createElement('div');
+                const l = document.createElement('label');
+                l.textContent = label;
+                col.appendChild(l);
+                col.appendChild(control);
+                if (extra) col.appendChild(extra);
+                return col;
+            };
             (data.triggers || []).forEach(tr => {
-                const row = document.createElement('tr');
-                // Name
-                const tdName = document.createElement('td');
+                const box = document.createElement('div');
+                box.className = 'trigger-box';
+
+                // Header: name, enabled, short id
+                const head = document.createElement('div');
+                head.className = 'trigger-head';
                 const inputName = document.createElement('input');
                 inputName.type = 'text';
-                inputName.className = 'form-control form-control-sm';
                 inputName.value = tr.name || '';
-                tdName.appendChild(inputName);
-                row.appendChild(tdName);
-                // Audio select
-                const tdAudio = document.createElement('td');
+                inputName.setAttribute('aria-label', 'Trigger name');
+                const enabledWrap = document.createElement('label');
+                enabledWrap.className = 'trigger-enabled';
+                const chkEnabled = document.createElement('input');
+                chkEnabled.type = 'checkbox';
+                chkEnabled.checked = !!tr.enabled;
+                enabledWrap.appendChild(chkEnabled);
+                enabledWrap.appendChild(document.createTextNode(' Enabled'));
+                const codeId = document.createElement('code');
+                codeId.textContent = String(tr.id).slice(0, 8);
+                codeId.title = tr.id;
+                head.appendChild(inputName);
+                head.appendChild(enabledWrap);
+                head.appendChild(codeId);
+                box.appendChild(head);
+
+                // Settings grid
+                const grid = document.createElement('div');
+                grid.className = 'trigger-grid';
+                const selectAction = document.createElement('select');
+                [['play', 'Play audio'], ['advance', 'Advance Step'], ['auto', 'Return to Automatic']].forEach(([v, t]) => {
+                    const o = document.createElement('option');
+                    o.value = v; o.textContent = t;
+                    if ((tr.action || 'play') === v) o.selected = true;
+                    selectAction.appendChild(o);
+                });
+                const selectPool = document.createElement('select');
+                fillPoolOptions(selectPool, pools, tr.pool_id, '(none - use file)');
                 const selectAudio = document.createElement('select');
-                selectAudio.className = 'form-select form-select-sm';
                 filesData.files.forEach(f => {
                     const opt = document.createElement('option');
                     opt.value = f.filename;
@@ -756,71 +792,44 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (f.filename === tr.audio_file) opt.selected = true;
                     selectAudio.appendChild(opt);
                 });
-                tdAudio.appendChild(selectAudio);
-                row.appendChild(tdAudio);
-                // Action select
-                const tdAction = document.createElement('td');
-                const selectAction = document.createElement('select');
-                selectAction.className = 'form-select form-select-sm';
-                [['play', 'Play audio'], ['advance', 'Advance Step'], ['auto', 'Return to Automatic']].forEach(([v, t]) => {
-                    const o = document.createElement('option');
-                    o.value = v; o.textContent = t;
-                    if ((tr.action || 'play') === v) o.selected = true;
-                    selectAction.appendChild(o);
-                });
-                tdAction.appendChild(selectAction);
-                row.appendChild(tdAction);
-                // Pool select (overrides the fixed audio file when set)
-                const tdPool = document.createElement('td');
-                const selectPool = document.createElement('select');
-                selectPool.className = 'form-select form-select-sm';
-                fillPoolOptions(selectPool, pools, tr.pool_id, '(none - use file)');
-                const syncPoolState = () => {
+                const tsNote = document.createElement('div');
+                tsNote.className = 'form-text';
+                const syncState = () => {
                     const isPlay = selectAction.value === 'play';
                     selectAudio.disabled = !isPlay || !!selectPool.value;
                     selectPool.disabled = !isPlay;
+                    const info = fileMap.get(selectAudio.value);
+                    tsNote.innerHTML = '';
+                    if (!selectAudio.disabled && info && !info.has_timestamps) {
+                        const btnGen = document.createElement('button');
+                        btnGen.type = 'button';
+                        btnGen.className = 'btn btn-sm btn-info';
+                        btnGen.textContent = 'Gen Timestamps';
+                        btnGen.addEventListener('click', () => generateTimestamps(selectAudio.value));
+                        tsNote.appendChild(btnGen);
+                    }
                 };
-                selectAction.addEventListener('change', syncPoolState);
-                selectPool.addEventListener('change', syncPoolState);
-                syncPoolState();
-                tdPool.appendChild(selectPool);
-                row.appendChild(tdPool);
-                // Timestamp column
-                const tdTs = document.createElement('td');
-                const info = fileMap.get(tr.audio_file);
-                if (info && info.has_timestamps) {
-                    const badge = document.createElement('span');
-                    badge.className = 'badge bg-info';
-                    badge.textContent = 'Has Timestamps';
-                    tdTs.appendChild(badge);
-                } else {
-                    const btnGen = document.createElement('button');
-                    btnGen.className = 'btn btn-sm btn-info';
-                    btnGen.textContent = 'Gen Timestamps';
-                    btnGen.addEventListener('click', () => generateTimestamps(selectAudio.value));
-                    tdTs.appendChild(btnGen);
-                }
-                row.appendChild(tdTs);
-                // Enabled toggle
-                const tdEnabled = document.createElement('td');
-                const chkEnabled = document.createElement('input');
-                chkEnabled.type = 'checkbox';
-                chkEnabled.className = 'form-check-input';
-                chkEnabled.checked = !!tr.enabled;
-                tdEnabled.appendChild(chkEnabled);
-                row.appendChild(tdEnabled);
-                // ID column
-                const tdId = document.createElement('td');
-                const codeId = document.createElement('code');
-                codeId.textContent = tr.id;
-                tdId.appendChild(codeId);
-                row.appendChild(tdId);
-                // Actions (Save + dropdown for others)
-                const tdActions = document.createElement('td');
-                const btnSave = document.createElement('button');
-                btnSave.className = 'btn btn-sm btn-success';
-                btnSave.textContent = 'Save';
-                btnSave.addEventListener('click', async () => {
+                selectAction.addEventListener('change', syncState);
+                selectPool.addEventListener('change', syncState);
+                selectAudio.addEventListener('change', syncState);
+                syncState();
+                grid.appendChild(mkField('Action', selectAction));
+                grid.appendChild(mkField('Pool', selectPool));
+                grid.appendChild(mkField('Audio file', selectAudio, tsNote));
+                box.appendChild(grid);
+
+                // Buttons
+                const actions = document.createElement('div');
+                actions.className = 'btn-row';
+                const mkBtn = (label, cls, onClick) => {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn btn-sm ' + cls;
+                    b.textContent = label;
+                    b.addEventListener('click', onClick);
+                    actions.appendChild(b);
+                };
+                mkBtn('Save', 'btn-success', async () => {
                     try {
                         const payload = { name: inputName.value, audio_file: selectAudio.value, pool_id: selectPool.value, action: selectAction.value, enabled: chkEnabled.checked };
                         const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -834,39 +843,27 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     } catch (e) { displayTriggerMessage('Save failed', true); }
                 });
-                const menu = document.createElement('div');
-                menu.className = 'btn-row';
-                const mkItem = (label, onClick, isDanger=false) => {
-                    const b = document.createElement('button');
-                    b.type = 'button';
-                    b.className = 'btn btn-sm ' + (isDanger ? 'btn-danger' : 'btn-secondary');
-                    b.textContent = label;
-                    b.addEventListener('click', onClick);
-                    return b;
-                };
-                menu.appendChild(mkItem('Test Trigger', async () => {
+                mkBtn('Test', 'btn-secondary', async () => {
                     try {
                         const resp = await fetch(`/api/network_triggers/${tr.id}/fire`, { method: 'POST' });
                         const result = await resp.json();
                         if (resp.ok && result.success) displayTriggerMessage('Trigger fired');
                         else displayTriggerMessage(result.message || result.error || 'Busy/failed', true);
                     } catch (e) { displayTriggerMessage('Fire failed', true); }
-                }));
-                menu.appendChild(mkItem('Copy ID', async () => {
+                });
+                mkBtn('Copy ID', 'btn-secondary', async () => {
                     const ok = await copyToClipboard(tr.id);
                     displayTriggerMessage(ok ? 'ID copied' : 'Copy failed', !ok);
-                }));
-                menu.appendChild(mkItem('Copy URL', async () => {
+                });
+                mkBtn('Copy URL', 'btn-secondary', async () => {
                     try {
-                        const portRes = await fetch('/api/network_triggers');
-                        const portData = await portRes.json();
                         const host = window.location.hostname || 'ghosthost.local';
-                        const url = `http://${host}:${portData.port}/api/trigger/${tr.id}/play`;
+                        const url = `http://${host}:${data.port}/api/trigger/${tr.id}/play`;
                         const ok = await copyToClipboard(url);
                         displayTriggerMessage(ok ? 'URL copied' : 'Copy failed', !ok);
                     } catch (e) { displayTriggerMessage('Copy failed', true); }
-                }));
-                menu.appendChild(mkItem('Delete', async () => {
+                });
+                mkBtn('Delete', 'btn-danger', async () => {
                     if (!confirm('Delete this trigger?')) return;
                     try {
                         const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'DELETE' });
@@ -874,11 +871,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (resp.ok && result.success) { displayTriggerMessage('Trigger deleted'); loadTriggers(); }
                         else displayTriggerMessage(result.error || 'Delete failed', true);
                     } catch (e) { displayTriggerMessage('Delete failed', true); }
-                }, true));
-                tdActions.appendChild(btnSave);
-                tdActions.appendChild(menu);
-                row.appendChild(tdActions);
-                tbody.appendChild(row);
+                });
+                box.appendChild(actions);
+                tableTriggers.appendChild(box);
             });
         } catch (e) {
             console.error('Failed to load triggers', e);
