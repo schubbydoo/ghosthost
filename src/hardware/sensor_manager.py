@@ -48,7 +48,13 @@ class SensorManager:
                     GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
                 self.last_trigger_time[pin_name] = 0
         self.logger.info("GPIO configured for sensors (polling mode)")
-        self._last_pin_state = {name: 0 for name in sensor_pins}
+        # Start from the real pin levels. The right port idles HIGH (pull-up), so
+        # assuming LOW here made the first poll look like a rising edge and fired
+        # a performance every time the service started.
+        self._last_pin_state = {
+            name: (GPIO.input(self.gpio_pins[name]) if self.gpio_pins.get(name) else 0)
+            for name in sensor_pins
+        }
         self._polling = True
         # Do not start the thread here
 

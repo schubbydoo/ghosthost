@@ -97,9 +97,20 @@ class MotorController:
             if timestamp_path.exists():
                 with open(timestamp_path, 'r') as f:
                     data = json.load(f)
-                # Elevenlabs format: top-level 'words' list, filter for type == 'word'
+                # Elevenlabs format: top-level 'words' list. Spoken words move the
+                # mouth; so do audio events whose tag contains one of the
+                # configured keywords (default 'laugh': "(laughs)", "[evil laugh]"),
+                # held open for the event's length. Other events, such as
+                # "[chuckle]" or "[spooky music]", leave the mouth shut.
                 words = data.get('words', [])
-                word_entries = [w for w in words if w.get('type') == 'word']
+                keywords = [k.lower() for k in
+                            (self.motor_settings.get('open_mouth_events', ['laugh']) or [])]
+                word_entries = [
+                    w for w in words
+                    if w.get('type') == 'word'
+                    or (w.get('type') == 'audio_event'
+                        and any(k in str(w.get('text', '')).lower() for k in keywords))
+                ]
                 return word_entries
             else:
                 self.logger.warning(f"Timestamp file not found: {timestamp_path}")
