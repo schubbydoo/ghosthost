@@ -3,13 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ghost Host Control Panel</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta name="color-scheme" content="dark">
+    <title>Ghost Host</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="container mt-5">
-        {% if is_ap_mode %}
+    <header class="site">
+        <div class="brand">
+            <h1>GHOST<span>HOST</span></h1>
+            <span class="host">{{ request.host.split(':')[0] }}</span>
+        </div>
+        <nav class="tabs">
+            <a href="#dashboard" data-tab="dashboard">Dashboard</a>
+            <a href="#media" data-tab="media">Media</a>
+            <a href="#pools" data-tab="pools">Pools</a>
+            <a href="#triggers" data-tab="triggers">Triggers</a>
+            <a href="#system" data-tab="system">System</a>
+        </nav>
+    </header>
+    <div class="wrap">
+{% if is_ap_mode %}
         <div class="alert alert-warning" role="alert">
             <h4>WiFi Setup Mode Active</h4>
             <p>You are currently connected to the Ghost Host setup network (<b>{{ ap_ssid }}</b>). Your device's IP is likely <b>{{ request.remote_addr }}</b>. The Ghost Host AP is at <b>{{ request.host.split(':')[0] }}</b>.</p>
@@ -17,14 +30,21 @@
         </div>
         {% endif %}
 
-        <h1>Ghost Host Control Panel</h1>
-        <hr>
-
-        <!-- Status Section -->
-        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
-            <div class="card-header">
-                Status
+        
+        <section class="tab-pane" data-tab="dashboard">
+            <h2 class="pane-title">Dashboard</h2>
+            <p class="pane-sub">Is the prop healthy, and where is the clue schedule right now?</p>
+        <!-- Health Section -->
+        <div class="card mb-4" id="health-card" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Health</div>
+            <div class="card-body">
+                <div class="stat-grid" id="health-grid"><div class="stat"><div class="k">Loading</div><div class="v">...</div></div></div>
             </div>
+        </div>
+        <!-- End Health Section -->
+<!-- Status Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Network</div>
             <div class="card-body">
                 <p><strong>Current Network:</strong> <span id="status-network">Loading...</span></p>
                 <p><strong>IP Address:</strong> <span id="status-ip">Loading...</span></p>
@@ -34,7 +54,8 @@
             </div>
         </div>
 
-        <!-- Schedule Status Section -->
+        
+<!-- Schedule Status Section -->
         <div class="card mb-4" id="schedule-status-card" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">Schedule Status</div>
             <div class="card-body">
@@ -44,15 +65,14 @@
                 <div class="mb-2">
                     <button class="btn btn-sm btn-primary" id="btn-sched-advance">Advance to Next Step</button>
                     <button class="btn btn-sm btn-secondary" id="btn-sched-auto">Return to Automatic</button>
-                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#sched-clock-tools">Set Clock</button>
                 </div>
-                <div class="collapse border rounded p-3 mb-2" id="sched-clock-tools">
+                <details class="border rounded p-3 mb-2" id="sched-clock-tools"><summary>Set Clock</summary><div class="mt-2">
                     <button class="btn btn-sm btn-success mb-2" id="btn-clock-phone">Use this phone's time</button>
                     <div class="input-group input-group-sm">
                         <input type="datetime-local" class="form-control" id="clock-manual-input">
                         <button class="btn btn-outline-success" id="btn-clock-manual">Set entered time</button>
                     </div>
-                </div>
+                </div></details>
                 <details>
                     <summary class="form-text">Test time</summary>
                     <div class="input-group input-group-sm mt-2">
@@ -65,8 +85,11 @@
             </div>
         </div>
         <!-- End Schedule Status Section -->
-
-        <!-- Audio Management Section -->
+        </section>
+        <section class="tab-pane" data-tab="media">
+            <h2 class="pane-title">Media</h2>
+            <p class="pane-sub">Audio files: upload, listen, describe, and generate mouth-sync timestamps.</p>
+<!-- Audio Management Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
                 Audio Management
@@ -134,20 +157,14 @@
                         <button class="btn btn-secondary" id="btn-set-volume">Set Volume</button>
                     </div>
                 </div>
-                <!-- Cooldown Period Control -->
-                <div class="mb-3">
-                    <label for="cooldown-period-input" class="form-label">Sensor Cooldown Period (seconds)</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" id="cooldown-period-input" min="0" max="600" step="1" value="30">
-                        <button class="btn btn-secondary" id="btn-set-cooldown">Set Cooldown</button>
-                    </div>
-                    <div id="cooldown-status" class="form-text"></div>
-                </div>
             </div>
         </div>
         <!-- End Audio Management Section -->
-
-        <!-- Greeting Pools Section -->
+        </section>
+        <section class="tab-pane" data-tab="pools">
+            <h2 class="pane-title">Pools &amp; Schedules</h2>
+            <p class="pane-sub">Group clips into pools, then optionally release pools on a timetable.</p>
+<!-- Greeting Pools Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
                 Greeting Pools
@@ -160,24 +177,10 @@
                 </div>
                 <div id="pool-status" class="form-text mb-2"></div>
                 <div id="pool-list"><!-- Populated by JS --></div>
-                <hr>
-                <h5>Sensor Assignments</h5>
-                <div class="row g-2 mb-2">
-                    <div class="col-md-6">
-                        <label for="select-pool-sensor_port_left" class="form-label">Left Sensor Port</label>
-                        <select class="form-select" id="select-pool-sensor_port_left" data-sensor="sensor_port_left"></select>
-                    </div>
-                    <div class="col-md-6">
-                        <label for="select-pool-sensor_port_right" class="form-label">Right Sensor Port</label>
-                        <select class="form-select" id="select-pool-sensor_port_right" data-sensor="sensor_port_right"></select>
-                    </div>
-                </div>
-                <div class="form-text">Sensors with no pool play the default audio. A schedule (listed under the pools) plays whichever pool is current. Network triggers choose their pool in the table below.</div>
-            </div>
+                            </div>
         </div>
         <!-- End Greeting Pools Section -->
-
-        <!-- Schedules Section -->
+<!-- Schedules Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">Schedules</div>
             <div class="card-body">
@@ -191,8 +194,40 @@
             </div>
         </div>
         <!-- End Schedules Section -->
+        </section>
+        <section class="tab-pane" data-tab="triggers">
+            <h2 class="pane-title">Triggers</h2>
+            <p class="pane-sub">What each sensor port and network trigger plays.</p>
+        <!-- Sensor Assignments Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Sensor Ports</div>
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label for="select-pool-sensor_port_left" class="form-label">Left Sensor Port</label>
+                        <select class="form-select" id="select-pool-sensor_port_left" data-sensor="sensor_port_left"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="select-pool-sensor_port_right" class="form-label">Right Sensor Port</label>
+                        <select class="form-select" id="select-pool-sensor_port_right" data-sensor="sensor_port_right"></select>
+                    </div>
+                </div>
+                <div class="form-text">Sensors with no pool play the default audio. A schedule (listed under the pools) plays whichever pool is current. Network triggers choose their pool in the table below.</div>
 
-        <!-- Network Triggers Section -->
+                <hr>
+                <!-- Cooldown Period Control -->
+                <div class="mb-3">
+                    <label for="cooldown-period-input" class="form-label">Sensor Cooldown Period (seconds)</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="cooldown-period-input" min="0" max="600" step="1" value="30">
+                        <button class="btn btn-secondary" id="btn-set-cooldown">Set Cooldown</button>
+                    </div>
+                    <div id="cooldown-status" class="form-text"></div>
+                </div>
+            </div>
+        </div>
+        <!-- End Sensor Assignments Section -->
+<!-- Network Triggers Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
                 Network Triggers
@@ -224,8 +259,11 @@
             </div>
         </div>
         <!-- End Network Triggers Section -->
-
-        <!-- Idle Behavior Section -->
+        </section>
+        <section class="tab-pane" data-tab="system">
+            <h2 class="pane-title">System</h2>
+            <p class="pane-sub">Idle behavior, WiFi, and reboot.</p>
+<!-- Idle Behavior Section -->
         <div class="card mb-4">
             <div class="card-header">
                 Idle Behavior
@@ -248,8 +286,7 @@
             </div>
         </div>
         <!-- End Idle Behavior Section -->
-
-        <!-- WiFi Networks Section -->
+<!-- WiFi Networks Section -->
         <div class="card mb-4">
             <div class="card-header">
                 WiFi Networks Configuration
@@ -316,12 +353,11 @@
                 </div>
             </div>
         </div>
-
         <!-- Reboot Section -->
         <div class="text-center" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <button id="btn-reboot" class="btn btn-danger">Reboot System</button>
         </div>
-
+        </section>
     </div>
 
     <script>
@@ -329,7 +365,7 @@
         var IS_AP_MODE = {{ is_ap_mode | tojson }};
         var AP_SSID = "{{ ap_ssid or '' }}";
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='tabs.js') }}"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
-</html> 
+</html>

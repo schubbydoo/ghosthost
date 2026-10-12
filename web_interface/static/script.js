@@ -818,7 +818,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Actions (Save + dropdown for others)
                 const tdActions = document.createElement('td');
                 const btnSave = document.createElement('button');
-                btnSave.className = 'btn btn-sm btn-success me-2';
+                btnSave.className = 'btn btn-sm btn-success';
                 btnSave.textContent = 'Save';
                 btnSave.addEventListener('click', async () => {
                     try {
@@ -834,24 +834,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     } catch (e) { displayTriggerMessage('Save failed', true); }
                 });
-                const group = document.createElement('div');
-                group.className = 'btn-group';
-                const btnMore = document.createElement('button');
-                btnMore.type = 'button';
-                btnMore.className = 'btn btn-sm btn-secondary dropdown-toggle';
-                btnMore.setAttribute('data-bs-toggle', 'dropdown');
-                btnMore.textContent = 'More';
-                const menu = document.createElement('ul');
-                menu.className = 'dropdown-menu';
+                const menu = document.createElement('div');
+                menu.className = 'btn-row';
                 const mkItem = (label, onClick, isDanger=false) => {
-                    const li = document.createElement('li');
-                    const a = document.createElement('a');
-                    a.href = '#';
-                    a.className = 'dropdown-item' + (isDanger ? ' text-danger' : '');
-                    a.textContent = label;
-                    a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
-                    li.appendChild(a);
-                    return li;
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'btn btn-sm ' + (isDanger ? 'btn-danger' : 'btn-secondary');
+                    b.textContent = label;
+                    b.addEventListener('click', onClick);
+                    return b;
                 };
                 menu.appendChild(mkItem('Test Trigger', async () => {
                     try {
@@ -884,10 +875,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         else displayTriggerMessage(result.error || 'Delete failed', true);
                     } catch (e) { displayTriggerMessage('Delete failed', true); }
                 }, true));
-                group.appendChild(btnMore);
-                group.appendChild(menu);
                 tdActions.appendChild(btnSave);
-                tdActions.appendChild(group);
+                tdActions.appendChild(menu);
                 row.appendChild(tdActions);
                 tbody.appendChild(row);
             });
@@ -1304,4 +1293,38 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSchedules();
     loadStatus_schedule();
     setInterval(loadStatus_schedule, 15000);
+
+    // --- DASHBOARD HEALTH ---
+    async function loadHealth() {
+        const grid = document.getElementById('health-grid');
+        if (!grid) return;
+        let h;
+        try { h = await (await fetch('/api/health')).json(); } catch (e) { return; }
+        const fmtUp = s => { const d = Math.floor(s / 86400), hr = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + 'd ' : '') + hr + 'h ' + m + 'm'; };
+        let show = 'Idle', cls = 'bg-primary';
+        if (!h.controller_up) { show = 'Controller not responding'; cls = 'bg-danger'; }
+        else if (h.performing) { show = 'Performing'; cls = 'bg-info'; }
+        else if (h.cooling_down) { show = `Cooldown ${Math.ceil(h.cooldown_remaining)}s`; cls = 'bg-warning'; }
+        const items = [
+            ['Prop', `<span class="badge ${cls}">${show}</span>`],
+            ['Pi uptime', h.uptime_seconds != null ? fmtUp(h.uptime_seconds) : '--'],
+            ['CPU temp', h.cpu_temp_c != null ? h.cpu_temp_c.toFixed(1) + ' C' : '--'],
+            ['Memory used', h.mem_used_pct != null ? h.mem_used_pct + '%' : '--'],
+            ['Disk used', h.disk_used_pct != null ? h.disk_used_pct + '%' : '--'],
+            ['Audio files', h.audio_files],
+            ['Files w/o timestamps', h.missing_timestamps],
+            ['Default audio', h.default_audio || '--'],
+        ];
+        grid.innerHTML = '';
+        items.forEach(([k, v]) => {
+            const d = document.createElement('div');
+            d.className = 'stat';
+            d.innerHTML = '<div class="k"></div><div class="v"></div>';
+            d.firstChild.textContent = k;
+            d.lastChild.innerHTML = v;
+            grid.appendChild(d);
+        });
+    }
+    loadHealth();
+    setInterval(loadHealth, 10000);
 });

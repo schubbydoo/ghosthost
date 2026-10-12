@@ -220,6 +220,47 @@ def get_status():
 
     return jsonify(status)
 
+@app.route('/api/health', methods=['GET'])
+def get_health():
+    """Dashboard health: is the controller process alive, what is it doing, and Pi vitals."""
+    h = {'controller_up': False, 'performing': False, 'cooling_down': False, 'cooldown_remaining': 0}
+    try:
+        port = config.get('network_trigger.port', 5055)
+        r = requests.get(f'http://127.0.0.1:{port}/api/status', timeout=1.5).json()
+        h.update(controller_up=True, performing=bool(r.get('performing')),
+                 cooling_down=bool(r.get('cooling_down')),
+                 cooldown_remaining=r.get('cooldown_remaining', 0))
+    except Exception:
+        pass
+    def read(path):
+        try:
+            with open(path) as f:
+                return f.read()
+        except OSError:
+            return None
+    up = read('/proc/uptime')
+    h['uptime_seconds'] = int(float(up.split()[0])) if up else None
+    t = read('/sys/class/thermal/thermal_zone0/temp')
+    h['cpu_temp_c'] = int(t) / 1000 if t else None
+    mem = {}
+    for line in (read('/proc/meminfo') or '').splitlines():
+        k, _, v = line.partition(':')
+        mem[k] = int(v.split()[0]) if v.split() else 0
+    h['mem_used_pct'] = (round(100 - 100 * mem['MemAvailable'] / mem['MemTotal'])
+                         if mem.get('MemTotal') else None)
+    try:
+        import shutil
+        du = shutil.disk_usage('/')
+        h['disk_used_pct'] = round(100 * du.used / du.total)
+    except OSError:
+        h['disk_used_pct'] = None
+    files = audio_controller.list_audio_files()
+    h['audio_files'] = len(files)
+    h['missing_timestamps'] = sum(1 for f in files
+                                  if not (audio_controller.get_audio_info(f) or {}).get('has_timestamps'))
+    h['default_audio'] = config.get('audio.default_file', '')
+    return jsonify(h)
+
 # --- WIFI/NETWORK MANAGEMENT API (using NetworkManager) ---
 
 @app.route('/api/networks', methods=['GET'])
