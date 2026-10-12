@@ -121,6 +121,20 @@ class TriggerServer:
                 parsed = urlparse(self.path)
                 parts = parsed.path.strip('/').split('/')
 
+                # Operator controls for the web UI's Live tab. Local only: the web
+                # app proxies them, so nothing on the LAN can reach these directly.
+                if len(parts) == 3 and parts[0] == 'api' and parts[1] == 'live':
+                    if self.client_address[0] not in ('127.0.0.1', '::1'):
+                        return self._json_response(403, {'success': False, 'message': 'Local only'})
+                    length = int(self.headers.get('Content-Length', 0) or 0)
+                    try:
+                        body = json.loads(self.rfile.read(length).decode('utf-8')) if length else {}
+                    except Exception:
+                        body = {}
+                    result = outer.event_handler.live_command(parts[2], body)
+                    code = 200 if result.get('success') else 409
+                    return self._json_response(code, result)
+
                 # Accept only /api/trigger/<id>/play
                 if not (len(parts) == 4 and parts[0] == 'api' and parts[1] == 'trigger' and parts[3] == 'play'):
                     return self._json_response(404, {'success': False, 'message': 'Not found'})

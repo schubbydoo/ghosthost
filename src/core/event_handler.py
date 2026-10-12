@@ -120,6 +120,37 @@ class EventHandler:
             self._cleanup_performance()
             return { 'success': False, 'message': 'Unexpected error starting performance' }
 
+    def live_command(self, command: str, body: dict) -> dict:
+        """Operator actions from the web UI's Live tab.
+
+        play  {audio_file | pool_id}  play now; an operator press ends any cooldown first
+        sensor {sensor}               run a sensor port's path exactly as a visitor would
+                                      (cooldown applies)
+        stop                          cut the current performance
+        """
+        if command == 'stop':
+            was_active = self.performance_active
+            self.stop_performance()
+            self.force_end_cooldown()
+            return {'success': True, 'message': 'Stopped' if was_active else 'Nothing was playing'}
+        if command == 'sensor':
+            try:
+                sensor_type = SensorType(body.get('sensor'))
+            except ValueError:
+                return {'success': False, 'message': 'Unknown sensor'}
+            if self.performance_active:
+                return {'success': False, 'message': 'Performance already active'}
+            if self.sensor_manager.is_in_cooldown():
+                return {'success': False, 'message': 'In cooldown period'}
+            self._start_performance(sensor_type)
+            return {'success': self.performance_active, 'message': 'Performance started' if self.performance_active else 'Failed to start'}
+        if command == 'play':
+            if self.performance_active:
+                return {'success': False, 'message': 'Performance already active'}
+            self.force_end_cooldown()
+            return self.trigger_network_performance(body.get('audio_file'), body.get('pool_id'), 'live')
+        return {'success': False, 'message': 'Unknown command'}
+
     def _start_performance(self, sensor_type: SensorType):
         """Start the main animatronic performance"""
         self.performance_active = True

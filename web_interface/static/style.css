@@ -190,3 +190,24 @@ audio { height: 36px; color-scheme: dark; }
 .trigger-enabled { display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
 .trigger-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
 .trigger-grid .form-text { margin-top: 8px; }
+
+/* --- Live tab: phone-first, big thumb targets --------------------------------- */
+.live-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.bigbtn {
+  min-height: 64px; width: 100%; padding: 14px 16px; text-align: left; font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px; font-weight: 600; line-height: 1.25; letter-spacing: 0; text-transform: none;
+  border: 2px solid var(--line); border-radius: var(--radius); background: #0e1113; color: var(--text);
+  box-shadow: none; display: flex; flex-direction: column; gap: 4px; justify-content: center;
+}
+.bigbtn:hover { transform: none; box-shadow: none; border-color: var(--muted); }
+.bigbtn:active { transform: translateY(1px); }
+.bigbtn[disabled] { opacity: .55; }
+.bigbtn .sub { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+.bigbtn.performed { border-color: var(--accent); }
+.bigbtn.busy { border-color: var(--accent2); }
+.bigbtn.refused { border-color: var(--danger); }
+.live-statusline { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.live-stop { width: auto; min-width: 140px; border-color: var(--danger); color: var(--danger); text-align: center; }
+.live-stop:hover { border-color: var(--danger); }
+#live-state { font-size: 14px; padding: 4px 14px; }
+@media (max-width: 520px) { .live-grid { grid-template-columns: 1fr; } }

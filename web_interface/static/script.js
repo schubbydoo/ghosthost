@@ -193,6 +193,20 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             li.appendChild(desc);
 
+            const liveWrap = document.createElement('label');
+            liveWrap.className = 'form-check mt-2';
+            const liveChk = document.createElement('input');
+            liveChk.type = 'checkbox';
+            liveChk.className = 'form-check-input';
+            liveChk.checked = !!fileInfo.live;
+            liveChk.addEventListener('change', async () => {
+                await fetch('/api/live/favorite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename, on: liveChk.checked }) });
+                fileInfo.live = liveChk.checked;
+            });
+            liveWrap.appendChild(liveChk);
+            liveWrap.appendChild(document.createTextNode(' Live button (show on the Live tab)'));
+            li.appendChild(liveWrap);
+
             const player = document.createElement('audio');
             player.controls = true;
             player.preload = 'none';
@@ -1288,6 +1302,72 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSchedules();
     loadStatus_schedule();
     setInterval(loadStatus_schedule, 15000);
+
+    // --- LIVE TAB ---
+    const liveMessages = document.getElementById('live-messages');
+    function liveButton(container, title, sub, onPress) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'bigbtn';
+        b.innerHTML = '<span></span><span class="sub"></span>';
+        b.firstChild.textContent = title;
+        const subEl = b.lastChild;
+        subEl.textContent = sub || '';
+        b.addEventListener('click', async () => {
+            b.disabled = true;
+            subEl.textContent = 'sending...';
+            b.classList.remove('performed', 'busy', 'refused');
+            let r;
+            try { r = await onPress(); } catch (e) { r = { success: false, message: 'No answer from the prop' }; }
+            b.disabled = false;
+            b.classList.add(r.success ? 'performed' : (/active|cooldown/i.test(r.message || '') ? 'busy' : 'refused'));
+            subEl.textContent = r.success ? 'playing' : (r.message || 'failed');
+            setTimeout(() => { b.classList.remove('performed', 'busy', 'refused'); subEl.textContent = sub || ''; }, 6000);
+            loadLiveStatus();
+        });
+        container.appendChild(b);
+    }
+    async function loadLive() {
+        if (!liveMessages) return;
+        let st;
+        try { st = await (await fetch('/api/live/state')).json(); } catch (e) { return; }
+        const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+        const empty = (el, text) => { el.innerHTML = ''; return !!(text && (el.innerHTML = '<p class="form-text">' + text + '</p>')); };
+        liveMessages.innerHTML = '';
+        if (!st.messages.length) empty(liveMessages, 'No messages yet. Tick "Live button" on a file in the Media tab.');
+        st.messages.forEach(m => liveButton(liveMessages, m.description || m.filename, m.description ? m.filename : '', () => post('/api/live/play', { audio_file: m.filename })));
+        const pools = document.getElementById('live-pools');
+        pools.innerHTML = '';
+        st.pools.forEach(p => liveButton(pools, p.name, p.count + ' clips', () => post('/api/live/play', { pool_id: p.id })));
+        st.schedules.forEach(sc => liveButton(pools, 'Schedule: ' + sc.name, 'current step', () => post('/api/live/play', { pool_id: sc.id })));
+        if (!st.pools.length) empty(pools, 'No pools yet.');
+        const sensors = document.getElementById('live-sensors');
+        sensors.innerHTML = '';
+        st.sensors.forEach(sn => liveButton(sensors, 'Run ' + sn.label, 'plays: ' + sn.assigned, () => post('/api/live/sensor', { sensor: sn.id })));
+    }
+    async function loadLiveStatus() {
+        const badge = document.getElementById('live-state');
+        if (!badge) return;
+        try {
+            const h = await (await fetch('/api/health')).json();
+            let text = 'Idle', cls = 'bg-primary';
+            if (!h.controller_up) { text = 'Prop not responding'; cls = 'bg-danger'; }
+            else if (h.performing) { text = 'Speaking'; cls = 'bg-info'; }
+            else if (h.cooling_down) { text = 'Cooldown ' + Math.ceil(h.cooldown_remaining) + 's'; cls = 'bg-warning'; }
+            badge.textContent = text;
+            badge.className = 'badge ' + cls;
+        } catch (e) {}
+    }
+    const btnLiveStop = document.getElementById('btn-live-stop');
+    if (btnLiveStop) btnLiveStop.addEventListener('click', async () => {
+        await fetch('/api/live/stop', { method: 'POST' });
+        loadLiveStatus();
+    });
+    loadLive();
+    loadLiveStatus();
+    // Poll only while the tab is visible: this page sits open on a phone all evening
+    setInterval(() => { if (!document.hidden) loadLiveStatus(); }, 3000);
+    document.querySelectorAll('nav.tabs a[data-tab="live"]').forEach(a => a.addEventListener('click', loadLive));
 
     // --- DASHBOARD HEALTH ---
     async function loadHealth() {

@@ -15,6 +15,7 @@
         </div>
         <nav class="tabs">
             <a href="#dashboard" data-tab="dashboard">Dashboard</a>
+            <a href="#live" data-tab="live">Live</a>
             <a href="#media" data-tab="media">Media</a>
             <a href="#pools" data-tab="pools">Pools</a>
             <a href="#triggers" data-tab="triggers">Triggers</a>
@@ -85,6 +86,44 @@
             </div>
         </div>
         <!-- End Schedule Status Section -->
+        </section>
+        <section class="tab-pane" data-tab="live">
+            <h2 class="pane-title">Live</h2>
+            <p class="pane-sub">For running the night, not setting it up. Everything here happens now. Nothing changes how the prop is configured.</p>
+
+            <div class="card mb-4 info" id="live-status-card">
+                <div class="card-body">
+                    <div class="live-statusline">
+                        <div><span class="badge bg-primary" id="live-state">--</span>
+                            <span class="form-text" id="live-last"></span></div>
+                        <button class="bigbtn live-stop" id="btn-live-stop"><span>Stop</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">Messages</div>
+                <div class="card-body">
+                    <p class="form-text mb-3">Plays right away, even during a cooldown. Add a clip here with the "Live button" box on the Media tab.</p>
+                    <div class="live-grid" id="live-messages"></div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">Pools</div>
+                <div class="card-body">
+                    <p class="form-text mb-3">Plays the next clip from the pool, in its play order. This moves the pool along for visitors too.</p>
+                    <div class="live-grid" id="live-pools"></div>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header">Sensor ports</div>
+                <div class="card-body">
+                    <p class="form-text mb-3">Runs a port exactly as a visitor would, cooldown included.</p>
+                    <div class="live-grid" id="live-sensors"></div>
+                </div>
+            </div>
         </section>
         <section class="tab-pane" data-tab="media">
             <h2 class="pane-title">Media</h2>

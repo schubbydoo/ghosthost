@@ -40,6 +40,7 @@ def list_audio_files_api():
     files = audio_controller.list_audio_files()
     default_file = config.get('audio.default_file', '')
     descriptions = config.get('audio_descriptions', {}) or {}
+    live_files = set(config.get('live_files', []) or [])
     # Which pools hold each file, in pool order, plus its position in each
     pools_by_file = {}
     for pool in config.get('greeting_pools', []) or []:
@@ -54,6 +55,7 @@ def list_audio_files_api():
             'is_default': filename == default_file,
             'has_timestamps': info.get('has_timestamps', False),
             'description': descriptions.get(filename, ''),
+            'live': filename in live_files,
             'duration': info.get('duration'),
             'modified': info.get('modified'),
             'pools': pools_by_file.get(filename, []),
@@ -219,6 +221,79 @@ def get_status():
     status['default_audio_file'] = config.get('audio.default_file', 'N/A')
 
     return jsonify(status)
+
+# --- LIVE TAB API ---
+
+def _controller_post(path, body):
+    port = config.get('network_trigger.port', 5055)
+    try:
+        r = requests.post(f'http://127.0.0.1:{port}/api/live/{path}', json=body, timeout=5)
+        return r.json()
+    except Exception:
+        return {'success': False, 'message': 'Controller not responding'}
+
+@app.route('/api/live/state', methods=['GET'])
+def live_state():
+    config.load_config()
+    descriptions = config.get('audio_descriptions', {}) or {}
+    available = audio_controller.list_audio_files()
+    live_files = [f for f in (config.get('live_files', []) or []) if f in available]
+    assignments = config.get('sensor_pools', {}) or {}
+    def ref_label(ref):
+        if sched.is_schedule_ref(ref):
+            sc = sched.get_schedule(config, sched.schedule_id_from_ref(ref))
+            return 'Schedule: ' + sc['name'] if sc else None
+        pool = _find_pool(ref) if ref else None
+        return pool['name'] if pool else None
+    return jsonify({
+        'messages': [{'filename': f, 'description': descriptions.get(f, '')} for f in live_files],
+        'pools': [{'id': p['id'], 'name': p['name'], 'count': len(p.get('files') or [])}
+                  for p in config.get('greeting_pools', []) or []],
+        'schedules': [{'id': 'schedule:' + sc['id'], 'name': sc['name']}
+                      for sc in config.get('schedules', []) or []],
+        'sensors': [{'id': p, 'label': 'Left sensor' if p.endswith('left') else 'Right sensor',
+                     'assigned': ref_label(assignments.get(p)) or 'default audio'} for p in SENSOR_PORTS],
+    })
+
+@app.route('/api/live/play', methods=['POST'])
+def live_play():
+    config.load_config()
+    data = request.get_json() or {}
+    if data.get('audio_file'):
+        if data['audio_file'] not in audio_controller.list_audio_files():
+            return jsonify({'success': False, 'message': 'File not found'}), 404
+        body = {'audio_file': data['audio_file']}
+    elif data.get('pool_id') and _valid_ref(data['pool_id']):
+        body = {'pool_id': data['pool_id']}
+    else:
+        return jsonify({'success': False, 'message': 'Nothing to play'}), 400
+    return jsonify(_controller_post('play', body))
+
+@app.route('/api/live/sensor', methods=['POST'])
+def live_sensor():
+    sensor = (request.get_json() or {}).get('sensor')
+    if sensor not in SENSOR_PORTS:
+        return jsonify({'success': False, 'message': 'Unknown sensor'}), 400
+    return jsonify(_controller_post('sensor', {'sensor': sensor}))
+
+@app.route('/api/live/stop', methods=['POST'])
+def live_stop():
+    return jsonify(_controller_post('stop', {}))
+
+@app.route('/api/live/favorite', methods=['POST'])
+def live_favorite():
+    """Show or hide a file as a button on the Live tab: {filename, on}"""
+    config.load_config()
+    data = request.get_json() or {}
+    filename = data.get('filename')
+    if filename not in audio_controller.list_audio_files():
+        return jsonify({'error': 'File not found'}), 404
+    files = [f for f in (config.get('live_files', []) or []) if f != filename]
+    if data.get('on'):
+        files.append(filename)
+    config.set('live_files', files)
+    config.save_config()
+    return jsonify({'success': True})
 
 @app.route('/api/health', methods=['GET'])
 def get_health():
