@@ -10,6 +10,8 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from src.core import schedule as sched
+
 
 class TriggerServer:
     def __init__(self, event_handler, config):
@@ -110,6 +112,7 @@ class TriggerServer:
                         'enabled': t.get('enabled', True),
                         'audio_file': t.get('audio_file'),
                         'pool_id': t.get('pool_id') or None,
+                        'action': t.get('action') or 'play',
                         'secret_set': bool((t.get('secret') or '').strip()),
                     } for t in triggers],
                 })
@@ -144,6 +147,16 @@ class TriggerServer:
                     if not auth_ok:
                         return self._json_response(401, {'success': False, 'message': 'Unauthorized'})
 
+                action = trigger.get('action') or 'play'
+                if action in ('advance', 'auto'):
+                    outer.config.load_config()
+                    if action == 'advance':
+                        if not sched.advance_assigned(outer.config):
+                            return self._json_response(400, {'success': False, 'message': 'No schedule assigned to a sensor port'})
+                        return self._json_response(200, {'success': True, 'message': 'Advanced to next step'})
+                    sched.set_override(outer.config, None, None)
+                    return self._json_response(200, {'success': True, 'message': 'Returned to automatic'})
+
                 # Read optional body to override audio_file
                 length = int(self.headers.get('Content-Length', 0) or 0)
                 audio_override = None
@@ -165,7 +178,7 @@ class TriggerServer:
                     audio_file = trigger.get('audio_file') or outer.config.get('audio.default_file')
                     pool_id = None
 
-                result = outer.event_handler.trigger_network_performance(audio_file, pool_id)
+                result = outer.event_handler.trigger_network_performance(audio_file, pool_id, trigger_id)
                 if result.get('success'):
                     return self._json_response(200, result)
                 msg = result.get('message', 'Busy')

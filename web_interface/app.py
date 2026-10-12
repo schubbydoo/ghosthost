@@ -15,6 +15,8 @@ from src.network_management.network_manager import NetworkManager
 from src.network_management.ap_mode_manager import AP_SSID as DEFAULT_AP_SETUP_SSID
 import requests
 import uuid
+from datetime import datetime
+from src.core import schedule as sched
 
 audio_controller = AudioController(config)
 network_manager = NetworkManager()
@@ -295,10 +297,20 @@ def set_idle_behavior_api():
 # --- GREETING POOLS API ---
 
 SENSOR_PORTS = ['sensor_port_left', 'sensor_port_right']
+TRIGGER_ACTIONS = ('play', 'advance', 'auto')
 
 def _find_pool(pool_id):
     return next((p for p in config.get('greeting_pools', []) or []
                  if str(p.get('id')) == str(pool_id)), None)
+
+def _valid_ref(ref):
+    """A pool id or a 'schedule:<id>' reference to an existing schedule."""
+    if sched.is_schedule_ref(ref):
+        return sched.get_schedule(config, sched.schedule_id_from_ref(ref)) is not None
+    return _find_pool(ref) is not None
+
+def _pool_order(value):
+    return 'in_order' if value == 'in_order' else 'shuffle'
 
 def _clean_pool_files(files):
     """Keep only existing audio files, without duplicates, preserving order."""
@@ -313,6 +325,7 @@ def list_greeting_pools():
     assignments = config.get('sensor_pools', {}) or {}
     return jsonify({
         'pools': config.get('greeting_pools', []) or [],
+        'schedules': config.get('schedules', []) or [],
         'sensor_pools': {port: assignments.get(port) or '' for port in SENSOR_PORTS},
     })
 
@@ -324,7 +337,8 @@ def create_greeting_pool():
     files = _clean_pool_files(data.get('files', []))
     if files is None:
         return jsonify({'error': 'files must be a list'}), 400
-    pool = {'id': str(uuid.uuid4()), 'name': name, 'files': files}
+    pool = {'id': str(uuid.uuid4()), 'name': name, 'files': files,
+            'order': _pool_order(data.get('order'))}
     pools = config.get('greeting_pools', []) or []
     pools.append(pool)
     config.set('greeting_pools', pools)
@@ -345,12 +359,17 @@ def update_greeting_pool(pool_id):
         if files is None:
             return jsonify({'error': 'files must be a list'}), 400
         pool['files'] = files
+    if 'order' in data:
+        pool['order'] = _pool_order(data.get('order'))
     config.save_config()
     return jsonify({'success': True, 'pool': pool})
 
 @app.route('/api/greeting_pools/<pool_id>', methods=['DELETE'])
 def delete_greeting_pool(pool_id):
     config.load_config()
+    for sc in config.get('schedules', []) or []:
+        if any(str(st.get('pool_id')) == str(pool_id) for st in sc.get('steps') or []):
+            return jsonify({'error': f"Pool is used by schedule '{sc.get('name')}'"}), 409
     pools = config.get('greeting_pools', []) or []
     new_pools = [p for p in pools if str(p.get('id')) != str(pool_id)]
     if len(new_pools) == len(pools):
@@ -377,11 +396,178 @@ def set_sensor_pool():
     pool_id = data.get('pool_id') or ''
     if sensor not in SENSOR_PORTS:
         return jsonify({'error': 'Invalid sensor'}), 400
-    if pool_id and not _find_pool(pool_id):
+    if pool_id and not _valid_ref(pool_id):
         return jsonify({'error': 'Invalid pool_id'}), 400
     config.set(f'sensor_pools.{sensor}', pool_id)
     config.save_config()
     return jsonify({'success': True, 'sensor': sensor, 'pool_id': pool_id})
+
+# --- SCHEDULES API ---
+
+def _clean_schedule(data):
+    """Validate a schedule body. Returns (schedule fields, error)."""
+    steps = []
+    for st in data.get('steps') or []:
+        at = str(st.get('at') or '')
+        if sched.parse_hhmm(at) is None:
+            return None, f"Invalid time '{at}' (use HH:MM)"
+        if not _find_pool(st.get('pool_id')):
+            return None, 'Every step needs an existing pool'
+        steps.append({'at': at, 'pool_id': st['pool_id']})
+    if not steps:
+        return None, 'Add at least one step'
+    rollover = data.get('night_rollover') or sched.DEFAULT_ROLLOVER
+    if sched.parse_hhmm(rollover) is None:
+        return None, 'Invalid night rollover'
+    fields = {'name': (data.get('name') or '').strip() or 'New Schedule',
+              'active_date': (data.get('active_date') or '').strip(),
+              'night_rollover': rollover, 'steps': steps}
+    if fields['active_date']:
+        try:
+            datetime.strptime(fields['active_date'], '%Y-%m-%d')
+        except ValueError:
+            return None, 'Active date must be YYYY-MM-DD'
+    fields['steps'] = sched.sorted_steps(fields)
+    times = [s['at'] for s in fields['steps']]
+    dupes = sorted({t for t in times if times.count(t) > 1})
+    if dupes:
+        return None, f"Two steps start at {dupes[0]}"
+    return fields, None
+
+def _schedule_warnings(schedule):
+    files_with_ts = {f for f in audio_controller.list_audio_files()
+                     if (audio_controller.get_audio_info(f) or {}).get('has_timestamps')}
+    missing = set()
+    for st in schedule.get('steps') or []:
+        pool = _find_pool(st.get('pool_id'))
+        missing.update(f for f in (pool or {}).get('files', []) if f not in files_with_ts)
+    return sorted(missing)
+
+@app.route('/api/schedules', methods=['GET'])
+def list_schedules():
+    config.load_config()
+    schedules = config.get('schedules', []) or []
+    return jsonify({'schedules': [dict(s, missing_timestamps=_schedule_warnings(s)) for s in schedules]})
+
+@app.route('/api/schedules', methods=['POST'])
+def create_schedule():
+    config.load_config()
+    data = request.get_json() or {}
+    data.setdefault('steps', [])
+    if not data['steps']:
+        # Placeholder so an empty schedule can be created and then filled in
+        first = (config.get('greeting_pools', []) or [None])[0]
+        if not first:
+            return jsonify({'error': 'Create a pool first'}), 400
+        data['steps'] = [{'at': '00:00', 'pool_id': first['id']}]
+    fields, err = _clean_schedule(data)
+    if err:
+        return jsonify({'error': err}), 400
+    schedule = dict(fields, id=str(uuid.uuid4()))
+    config.set('schedules', (config.get('schedules', []) or []) + [schedule])
+    config.save_config()
+    return jsonify({'success': True, 'schedule': schedule})
+
+@app.route('/api/schedules/<schedule_id>', methods=['PUT'])
+def update_schedule(schedule_id):
+    config.load_config()
+    schedule = sched.get_schedule(config, schedule_id)
+    if not schedule:
+        return jsonify({'error': 'Schedule not found'}), 404
+    fields, err = _clean_schedule(request.get_json() or {})
+    if err:
+        return jsonify({'error': err}), 400
+    schedule.update(fields)
+    config.save_config()
+    return jsonify({'success': True, 'schedule': schedule})
+
+@app.route('/api/schedules/<schedule_id>', methods=['DELETE'])
+def delete_schedule(schedule_id):
+    config.load_config()
+    if not sched.get_schedule(config, schedule_id):
+        return jsonify({'error': 'Schedule not found'}), 404
+    config.set('schedules', [s for s in config.get('schedules', []) or []
+                             if str(s.get('id')) != str(schedule_id)])
+    ref = sched.schedule_ref(schedule_id)
+    assignments = config.get('sensor_pools', {}) or {}
+    for port in list(assignments):
+        if assignments[port] == ref:
+            assignments[port] = ''
+    config.set('sensor_pools', assignments)
+    for t in config.get('network_triggers', []) or []:
+        if t.get('pool_id') == ref:
+            t['pool_id'] = ''
+    config.save_config()
+    return jsonify({'success': True})
+
+@app.route('/api/schedule/status', methods=['GET'])
+def schedule_status():
+    config.load_config()
+    clock = sched.clock_state(config)
+    labels = {'synced': 'Synced', 'manual': 'Set manually', 'test': 'TEST', 'unset': 'Clock not set'}
+    ports = []
+    for port in SENSOR_PORTS:
+        ref = (config.get('sensor_pools', {}) or {}).get(port)
+        if not sched.is_schedule_ref(ref):
+            continue
+        cur = sched.resolve(config, sched.schedule_id_from_ref(ref))
+        if not cur:
+            continue
+        pool = _find_pool(cur['pool_id'])
+        ports.append({'port': port, 'schedule': cur['schedule'].get('name'),
+                      'pool': pool.get('name') if pool else None,
+                      'step_at': cur['step'].get('at'), 'next_at': cur['next'],
+                      'reason': cur['reason']})
+    return jsonify({
+        'time': clock['now'].strftime('%Y-%m-%d %H:%M:%S'),
+        'clock_state': clock['state'], 'clock_label': labels[clock['state']],
+        'test_time': config.get('schedule_test_time') or '',
+        'override_active': (config.get('schedule_override') or {}).get('step') is not None,
+        'ports': ports,
+    })
+
+@app.route('/api/schedule/advance', methods=['POST'])
+def schedule_advance():
+    config.load_config()
+    if not sched.advance_assigned(config):
+        return jsonify({'error': 'No schedule is assigned to a sensor port'}), 400
+    return jsonify({'success': True})
+
+@app.route('/api/schedule/auto', methods=['POST'])
+def schedule_auto():
+    config.load_config()
+    sched.set_override(config, None, None)
+    return jsonify({'success': True})
+
+@app.route('/api/schedule/test_time', methods=['POST'])
+def schedule_test_time():
+    """Set (or clear, with '') a fake local time: {test_time: 'YYYY-MM-DDTHH:MM'}"""
+    config.load_config()
+    value = ((request.get_json() or {}).get('test_time') or '').strip()
+    if value:
+        try:
+            datetime.fromisoformat(value)
+        except ValueError:
+            return jsonify({'error': 'Invalid date/time'}), 400
+    config.set('schedule_test_time', value)
+    config.save_config()
+    return jsonify({'success': True})
+
+@app.route('/api/schedule/clock', methods=['POST'])
+def schedule_set_clock():
+    """Set the Pi's clock: {epoch: seconds} (phone time) or {datetime: 'YYYY-MM-DDTHH:MM'}
+    (read as the Pi's local time)."""
+    data = request.get_json() or {}
+    try:
+        if data.get('epoch') is not None:
+            epoch = int(data['epoch'])
+        else:
+            epoch = int(datetime.fromisoformat(data['datetime']).timestamp())
+    except (ValueError, KeyError, TypeError):
+        return jsonify({'error': 'Provide epoch or datetime'}), 400
+    if not sched.set_system_clock(epoch):
+        return jsonify({'error': 'Could not set the clock (is the sudoers entry for `date` installed?)'}), 500
+    return jsonify({'success': True})
 
 # --- NETWORK TRIGGERS MANAGEMENT API ---
 
@@ -396,6 +582,7 @@ def list_network_triggers():
             'name': t.get('name'),
             'audio_file': t.get('audio_file'),
             'pool_id': t.get('pool_id') or '',
+            'action': t.get('action') or 'play',
             'enabled': t.get('enabled', True),
             'secret_present': bool(t.get('secret'))
         })
@@ -410,15 +597,19 @@ def create_network_trigger():
     secret = (data.get('secret') or '').strip()
     enabled = bool(data.get('enabled', True))
     pool_id = data.get('pool_id') or ''
-    if pool_id and not _find_pool(pool_id):
+    action = data.get('action') or 'play'
+    if action not in TRIGGER_ACTIONS:
+        return jsonify({'error': 'Invalid action'}), 400
+    if pool_id and not _valid_ref(pool_id):
         return jsonify({'error': 'Invalid pool_id'}), 400
-    if not audio_file or audio_file not in audio_controller.list_audio_files():
+    if action == 'play' and (not audio_file or audio_file not in audio_controller.list_audio_files()):
         return jsonify({'error': 'Invalid or missing audio_file'}), 400
     new_trigger = {
         'id': str(uuid.uuid4()),
         'name': name,
         'audio_file': audio_file,
         'pool_id': pool_id,
+        'action': action,
         'secret': secret,
         'enabled': enabled
     }
@@ -436,7 +627,7 @@ def update_network_trigger(trigger_id):
         if str(t.get('id')) == str(trigger_id):
             if 'name' in data:
                 t['name'] = data.get('name') or t.get('name')
-            if 'audio_file' in data:
+            if 'audio_file' in data and (data.get('action') or t.get('action') or 'play') == 'play':
                 af = data.get('audio_file')
                 if af and af in audio_controller.list_audio_files():
                     t['audio_file'] = af
@@ -444,9 +635,13 @@ def update_network_trigger(trigger_id):
                     return jsonify({'error': 'Invalid audio_file'}), 400
             if 'pool_id' in data:
                 pid = data.get('pool_id') or ''
-                if pid and not _find_pool(pid):
+                if pid and not _valid_ref(pid):
                     return jsonify({'error': 'Invalid pool_id'}), 400
                 t['pool_id'] = pid
+            if 'action' in data:
+                if data.get('action') not in TRIGGER_ACTIONS:
+                    return jsonify({'error': 'Invalid action'}), 400
+                t['action'] = data.get('action')
             if 'enabled' in data:
                 t['enabled'] = bool(data.get('enabled'))
             if 'secret' in data:

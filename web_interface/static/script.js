@@ -672,12 +672,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 tdAudio.appendChild(selectAudio);
                 row.appendChild(tdAudio);
+                // Action select
+                const tdAction = document.createElement('td');
+                const selectAction = document.createElement('select');
+                selectAction.className = 'form-select form-select-sm';
+                [['play', 'Play audio'], ['advance', 'Advance Step'], ['auto', 'Return to Automatic']].forEach(([v, t]) => {
+                    const o = document.createElement('option');
+                    o.value = v; o.textContent = t;
+                    if ((tr.action || 'play') === v) o.selected = true;
+                    selectAction.appendChild(o);
+                });
+                tdAction.appendChild(selectAction);
+                row.appendChild(tdAction);
                 // Pool select (overrides the fixed audio file when set)
                 const tdPool = document.createElement('td');
                 const selectPool = document.createElement('select');
                 selectPool.className = 'form-select form-select-sm';
                 fillPoolOptions(selectPool, pools, tr.pool_id, '(none - use file)');
-                const syncPoolState = () => { selectAudio.disabled = !!selectPool.value; };
+                const syncPoolState = () => {
+                    const isPlay = selectAction.value === 'play';
+                    selectAudio.disabled = !isPlay || !!selectPool.value;
+                    selectPool.disabled = !isPlay;
+                };
+                selectAction.addEventListener('change', syncPoolState);
                 selectPool.addEventListener('change', syncPoolState);
                 syncPoolState();
                 tdPool.appendChild(selectPool);
@@ -719,7 +736,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnSave.textContent = 'Save';
                 btnSave.addEventListener('click', async () => {
                     try {
-                        const payload = { name: inputName.value, audio_file: selectAudio.value, pool_id: selectPool.value, enabled: chkEnabled.checked };
+                        const payload = { name: inputName.value, audio_file: selectAudio.value, pool_id: selectPool.value, action: selectAction.value, enabled: chkEnabled.checked };
                         const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         const result = await resp.json();
                         if (resp.ok && result.success) {
@@ -848,6 +865,18 @@ document.addEventListener('DOMContentLoaded', function() {
             if (p.id === selectedId) opt.selected = true;
             select.appendChild(opt);
         });
+        if ((poolsData.schedules || []).length) {
+            const group = document.createElement('optgroup');
+            group.label = 'Schedules';
+            poolsData.schedules.forEach(sc => {
+                const opt = document.createElement('option');
+                opt.value = 'schedule:' + sc.id;
+                opt.textContent = 'Schedule: ' + sc.name;
+                if (opt.value === selectedId) opt.selected = true;
+                group.appendChild(opt);
+            });
+            select.appendChild(group);
+        }
     }
 
     async function loadPools() {
@@ -869,6 +898,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 inputName.value = pool.name || '';
                 nameGroup.appendChild(inputName);
                 box.appendChild(nameGroup);
+
+                const orderGroup = document.createElement('div');
+                orderGroup.className = 'input-group input-group-sm mb-2';
+                const orderLbl = document.createElement('span');
+                orderLbl.className = 'input-group-text';
+                orderLbl.textContent = 'Play order';
+                const selectOrder = document.createElement('select');
+                selectOrder.className = 'form-select';
+                [['shuffle', 'Shuffle'], ['in_order', 'In order']].forEach(([v, t]) => {
+                    const o = document.createElement('option');
+                    o.value = v; o.textContent = t;
+                    if ((pool.order || 'shuffle') === v) o.selected = true;
+                    selectOrder.appendChild(o);
+                });
+                orderGroup.appendChild(orderLbl);
+                orderGroup.appendChild(selectOrder);
+                box.appendChild(orderGroup);
 
                 const checks = [];
                 filesData.files.forEach(f => {
@@ -901,10 +947,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnSave.textContent = 'Save Pool';
                 btnSave.addEventListener('click', async () => {
                     try {
-                        const payload = { name: inputName.value, files: checks.filter(c => c.checked).map(c => c.value) };
+                        const payload = { name: inputName.value, order: selectOrder.value, files: checks.filter(c => c.checked).map(c => c.value) };
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         const result = await resp.json();
-                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadPools(); loadTriggers(); }
+                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadPools(); loadTriggers(); loadSchedules(); }
                         else displayPoolMessage(result.error || 'Save failed', true);
                     } catch (e) { displayPoolMessage('Save failed', true); }
                 });
@@ -916,7 +962,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     try {
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'DELETE' });
                         const result = await resp.json();
-                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadPools(); loadTriggers(); }
+                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadPools(); loadTriggers(); loadSchedules(); }
                         else displayPoolMessage(result.error || 'Delete failed', true);
                     } catch (e) { displayPoolMessage('Delete failed', true); }
                 });
@@ -962,4 +1008,214 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load triggers on page load
     loadTriggers();
-}); 
+
+    // --- SCHEDULES LOGIC ---
+    const scheduleList = document.getElementById('schedule-list');
+    const scheduleMsg = document.getElementById('schedule-msg');
+    const schedMsg = document.getElementById('sched-status-msg');
+
+    function showMsg(el, message, isError = false) {
+        if (!el) return;
+        el.textContent = message;
+        el.className = 'form-text ' + (isError ? 'text-danger' : 'text-success');
+        setTimeout(() => { el.textContent = ''; }, 4000);
+    }
+
+    async function postJson(url, body, method = 'POST') {
+        const resp = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+        let result = {};
+        try { result = await resp.json(); } catch (e) {}
+        return { ok: resp.ok && result.success, result };
+    }
+
+    async function loadSchedules() {
+        if (!scheduleList) return;
+        try {
+            const poolsData = await fetchPools();
+            const res = await fetch('/api/schedules');
+            const data = await res.json();
+            scheduleList.innerHTML = '';
+            (data.schedules || []).forEach(sc => {
+                const box = document.createElement('div');
+                box.className = 'border rounded p-3 mb-3';
+
+                const inputName = document.createElement('input');
+                inputName.type = 'text';
+                inputName.className = 'form-control mb-2';
+                inputName.value = sc.name || '';
+                box.appendChild(inputName);
+
+                const opts = document.createElement('div');
+                opts.className = 'row g-2 mb-2';
+                const mkField = (label, input) => {
+                    const col = document.createElement('div');
+                    col.className = 'col-sm-6';
+                    const l = document.createElement('label');
+                    l.className = 'form-label form-text mb-0';
+                    l.textContent = label;
+                    col.appendChild(l);
+                    col.appendChild(input);
+                    opts.appendChild(col);
+                };
+                const inputDate = document.createElement('input');
+                inputDate.type = 'date';
+                inputDate.className = 'form-control form-control-sm';
+                inputDate.value = sc.active_date || '';
+                mkField('Active date (blank = every night)', inputDate);
+                const inputRoll = document.createElement('input');
+                inputRoll.type = 'time';
+                inputRoll.className = 'form-control form-control-sm';
+                inputRoll.value = sc.night_rollover || '06:00';
+                mkField('Night rollover', inputRoll);
+                box.appendChild(opts);
+
+                const rowsDiv = document.createElement('div');
+                box.appendChild(rowsDiv);
+                const addRow = (step) => {
+                    const row = document.createElement('div');
+                    row.className = 'input-group input-group-sm mb-1';
+                    const t = document.createElement('input');
+                    t.type = 'time';
+                    t.className = 'form-control';
+                    t.value = step.at || '';
+                    t.style.maxWidth = '9rem';
+                    const sel = document.createElement('select');
+                    sel.className = 'form-select';
+                    (poolsData.pools || []).forEach(p => {
+                        const o = document.createElement('option');
+                        o.value = p.id; o.textContent = p.name;
+                        if (p.id === step.pool_id) o.selected = true;
+                        sel.appendChild(o);
+                    });
+                    const rm = document.createElement('button');
+                    rm.type = 'button';
+                    rm.className = 'btn btn-outline-danger';
+                    rm.textContent = 'Remove';
+                    rm.addEventListener('click', () => row.remove());
+                    row.appendChild(t); row.appendChild(sel); row.appendChild(rm);
+                    rowsDiv.appendChild(row);
+                };
+                (sc.steps || []).forEach(addRow);
+
+                if (sc.missing_timestamps && sc.missing_timestamps.length) {
+                    const warn = document.createElement('div');
+                    warn.className = 'badge bg-warning text-dark mt-1';
+                    warn.textContent = 'No timestamps: ' + sc.missing_timestamps.join(', ');
+                    box.appendChild(warn);
+                }
+
+                const actions = document.createElement('div');
+                actions.className = 'mt-2';
+                const btnRow = document.createElement('button');
+                btnRow.className = 'btn btn-sm btn-outline-primary me-2';
+                btnRow.textContent = 'Add Step';
+                btnRow.addEventListener('click', () => addRow({ at: '', pool_id: (poolsData.pools[0] || {}).id }));
+                const btnSave = document.createElement('button');
+                btnSave.className = 'btn btn-sm btn-success me-2';
+                btnSave.textContent = 'Save Schedule';
+                btnSave.addEventListener('click', async () => {
+                    const steps = Array.from(rowsDiv.children).map(r => ({
+                        at: r.querySelector('input').value, pool_id: r.querySelector('select').value }));
+                    const { ok, result } = await postJson(`/api/schedules/${sc.id}`, {
+                        name: inputName.value, active_date: inputDate.value,
+                        night_rollover: inputRoll.value, steps }, 'PUT');
+                    if (ok) { showMsg(scheduleMsg, 'Schedule saved'); loadSchedules(); loadStatus_schedule(); }
+                    else showMsg(scheduleMsg, result.error || 'Save failed', true);
+                });
+                const btnDelete = document.createElement('button');
+                btnDelete.className = 'btn btn-sm btn-danger';
+                btnDelete.textContent = 'Delete Schedule';
+                btnDelete.addEventListener('click', async () => {
+                    if (!confirm('Delete this schedule? Ports and triggers using it fall back to default audio.')) return;
+                    const resp = await fetch(`/api/schedules/${sc.id}`, { method: 'DELETE' });
+                    const result = await resp.json();
+                    if (resp.ok && result.success) { showMsg(scheduleMsg, 'Schedule deleted'); loadSchedules(); loadPools(); loadTriggers(); loadStatus_schedule(); }
+                    else showMsg(scheduleMsg, result.error || 'Delete failed', true);
+                });
+                actions.appendChild(btnRow); actions.appendChild(btnSave); actions.appendChild(btnDelete);
+                box.appendChild(actions);
+                scheduleList.appendChild(box);
+            });
+            // Refresh assignment dropdowns that list schedules
+            loadPools(); loadTriggers();
+        } catch (e) {
+            console.error('Failed to load schedules', e);
+        }
+    }
+
+    const btnAddSchedule = document.getElementById('btn-add-schedule');
+    if (btnAddSchedule) {
+        btnAddSchedule.addEventListener('click', async () => {
+            const name = prompt('Enter schedule name:', 'Clues');
+            if (name === null) return;
+            const { ok, result } = await postJson('/api/schedules', { name });
+            if (ok) { showMsg(scheduleMsg, 'Schedule created - set its steps, then Save Schedule'); loadSchedules(); }
+            else showMsg(scheduleMsg, result.error || 'Create failed', true);
+        });
+    }
+
+    // --- SCHEDULE STATUS LOGIC ---
+    const BADGE = { synced: 'bg-success', manual: 'bg-info', test: 'bg-warning text-dark', unset: 'bg-danger' };
+
+    async function loadStatus_schedule() {
+        const timeEl = document.getElementById('sched-time');
+        if (!timeEl) return;
+        try {
+            const res = await fetch('/api/schedule/status');
+            const st = await res.json();
+            timeEl.textContent = st.time;
+            const badge = document.getElementById('sched-clock-badge');
+            badge.textContent = st.clock_label;
+            badge.className = 'badge ms-2 ' + (BADGE[st.clock_state] || 'bg-secondary');
+            const ports = document.getElementById('sched-ports');
+            ports.innerHTML = '';
+            st.ports.forEach(p => {
+                const line = document.createElement('div');
+                const name = p.port === 'sensor_port_left' ? 'Left' : 'Right';
+                const next = p.next_at ? `next step at ${p.next_at}` : (p.reason === 'time' ? 'last step' : p.reason);
+                line.textContent = `${name} port, ${p.schedule}: ${p.pool || '?'} (since ${p.step_at}, ${next})`;
+                ports.appendChild(line);
+            });
+            if (st.override_active) {
+                const o = document.createElement('div');
+                o.className = 'text-warning';
+                o.textContent = 'Manual override active (clears after the night rollover)';
+                ports.appendChild(o);
+            }
+            if (st.test_time) document.getElementById('sched-test-time').value = st.test_time;
+        } catch (e) { console.error('Schedule status failed', e); }
+    }
+
+    function bindSched(id, fn) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', fn);
+    }
+    const afterSched = (ok, result, okText) => {
+        showMsg(schedMsg, ok ? okText : (result.error || 'Failed'), !ok);
+        loadStatus_schedule();
+    };
+    bindSched('btn-sched-advance', async () => { const r = await postJson('/api/schedule/advance'); afterSched(r.ok, r.result, 'Advanced'); });
+    bindSched('btn-sched-auto', async () => { const r = await postJson('/api/schedule/auto'); afterSched(r.ok, r.result, 'Back to automatic'); });
+    bindSched('btn-clock-phone', async () => {
+        const r = await postJson('/api/schedule/clock', { epoch: Math.round(Date.now() / 1000) });
+        afterSched(r.ok, r.result, 'Clock set from this phone');
+    });
+    bindSched('btn-clock-manual', async () => {
+        const v = document.getElementById('clock-manual-input').value;
+        const r = await postJson('/api/schedule/clock', { datetime: v });
+        afterSched(r.ok, r.result, 'Clock set');
+    });
+    bindSched('btn-test-time-set', async () => {
+        const r = await postJson('/api/schedule/test_time', { test_time: document.getElementById('sched-test-time').value });
+        afterSched(r.ok, r.result, 'Test time on');
+    });
+    bindSched('btn-test-time-clear', async () => {
+        document.getElementById('sched-test-time').value = '';
+        const r = await postJson('/api/schedule/test_time', { test_time: '' });
+        afterSched(r.ok, r.result, 'Real time restored');
+    });
+
+    loadSchedules();
+    loadStatus_schedule();
+    setInterval(loadStatus_schedule, 15000);
+});

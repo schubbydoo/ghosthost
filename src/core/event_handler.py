@@ -57,11 +57,12 @@ class EventHandler:
         # The web UI runs in another process and edits the config file
         self.config.load_config()
         pool_id = self.config.get(f'sensor_pools.{sensor_type.value}')
-        return (self.greeting_picker.pick(pool_id)
+        return (self.greeting_picker.pick(pool_id, port=sensor_type.value)
                 or self.config.get('audio.default_file', 'HMGreeting.wav'))
 
     def trigger_network_performance(self, audio_file: Optional[str] = None,
-                                    pool_id: Optional[str] = None) -> dict:
+                                    pool_id: Optional[str] = None,
+                                    trigger_id: Optional[str] = None) -> dict:
         """Start a performance initiated by a network trigger.
 
         An explicit audio_file wins; otherwise a greeting is picked from pool_id
@@ -76,7 +77,7 @@ class EventHandler:
 
         # Determine audio file
         selected_audio = (audio_file
-                          or self.greeting_picker.pick(pool_id)
+                          or self.greeting_picker.pick(pool_id, port=f'trigger:{trigger_id}')
                           or self.config.get('audio.default_file', 'HMGreeting.wav'))
 
         self.performance_active = True

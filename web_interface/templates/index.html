@@ -34,6 +34,38 @@
             </div>
         </div>
 
+        <!-- Schedule Status Section -->
+        <div class="card mb-4" id="schedule-status-card" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Schedule Status</div>
+            <div class="card-body">
+                <p><strong>Pi local time:</strong> <span id="sched-time">--</span>
+                    <span class="badge bg-secondary ms-2" id="sched-clock-badge">--</span></p>
+                <div id="sched-ports" class="mb-3"></div>
+                <div class="mb-2">
+                    <button class="btn btn-sm btn-primary" id="btn-sched-advance">Advance to Next Step</button>
+                    <button class="btn btn-sm btn-secondary" id="btn-sched-auto">Return to Automatic</button>
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#sched-clock-tools">Set Clock</button>
+                </div>
+                <div class="collapse border rounded p-3 mb-2" id="sched-clock-tools">
+                    <button class="btn btn-sm btn-success mb-2" id="btn-clock-phone">Use this phone's time</button>
+                    <div class="input-group input-group-sm">
+                        <input type="datetime-local" class="form-control" id="clock-manual-input">
+                        <button class="btn btn-outline-success" id="btn-clock-manual">Set entered time</button>
+                    </div>
+                </div>
+                <details>
+                    <summary class="form-text">Test time</summary>
+                    <div class="input-group input-group-sm mt-2">
+                        <input type="datetime-local" class="form-control" id="sched-test-time">
+                        <button class="btn btn-outline-secondary" id="btn-test-time-set">Use test time</button>
+                        <button class="btn btn-outline-secondary" id="btn-test-time-clear">Clear</button>
+                    </div>
+                </details>
+                <div id="sched-status-msg" class="form-text mt-2"></div>
+            </div>
+        </div>
+        <!-- End Schedule Status Section -->
+
         <!-- Audio Management Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
@@ -103,7 +135,7 @@
                 Greeting Pools
             </div>
             <div class="card-body">
-                <p class="form-text">A pool plays its greetings in random order, using every greeting once before any repeats. Each greeting keeps its own mouth-sync timestamps, so generate timestamps for every file in a pool.</p>
+                <p class="form-text">A pool plays its greetings in random order (using every greeting once before any repeats) or, with Play order set to In order, top to bottom and then loops. Each greeting keeps its own mouth-sync timestamps, so generate timestamps for every file in a pool.</p>
                 <div class="mb-3">
                     <button class="btn btn-primary" id="btn-add-pool">Add Pool</button>
                 </div>
@@ -121,10 +153,22 @@
                         <select class="form-select" id="select-pool-sensor_port_right" data-sensor="sensor_port_right"></select>
                     </div>
                 </div>
-                <div class="form-text">Sensors with no pool play the default audio. Network triggers choose their pool in the table below.</div>
+                <div class="form-text">Sensors with no pool play the default audio. A schedule (listed under the pools) plays whichever pool is current. Network triggers choose their pool in the table below.</div>
             </div>
         </div>
         <!-- End Greeting Pools Section -->
+
+        <!-- Schedules Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Schedules</div>
+            <div class="card-body">
+                <p class="form-text">A schedule switches pools at set local times. Assign it to a sensor port or network trigger like a pool. Make each later pool include the earlier clues so late players still hear them. Times before the night rollover count as after midnight of the same party night.</p>
+                <div class="mb-3"><button class="btn btn-primary" id="btn-add-schedule">Add Schedule</button></div>
+                <div id="schedule-msg" class="form-text mb-2"></div>
+                <div id="schedule-list"><!-- Populated by JS --></div>
+            </div>
+        </div>
+        <!-- End Schedules Section -->
 
         <!-- Network Triggers Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
@@ -142,6 +186,7 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Audio File</th>
+                                <th>Action</th>
                                 <th>Pool</th>
                                 <th>Timestamp</th>
                                 <th>Enabled</th>
