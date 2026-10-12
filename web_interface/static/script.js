@@ -84,6 +84,131 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Fetch and display audio files
+    let audioFilesData = [];
+    const audioSort = document.getElementById('audio-sort');
+    const audioPoolFilter = document.getElementById('audio-pool-filter');
+
+    function fmtDuration(sec) {
+        if (sec == null) return '';
+        const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+        return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function refreshPoolFilter() {
+        if (!audioPoolFilter) return;
+        const names = new Map();
+        audioFilesData.forEach(f => f.pools.forEach(p => names.set(p.id, p.name)));
+        const current = audioPoolFilter.value;
+        audioPoolFilter.innerHTML = '<option value="">All files</option><option value="__none__">Not in any pool</option>';
+        names.forEach((name, id) => {
+            const o = document.createElement('option');
+            o.value = id; o.textContent = 'In pool: ' + name;
+            audioPoolFilter.appendChild(o);
+        });
+        audioPoolFilter.value = names.has(current) || current === '__none__' ? current : '';
+    }
+
+    function renderAudioList() {
+        if (!audioFileList) return;
+        const poolId = audioPoolFilter ? audioPoolFilter.value : '';
+        const sortBy = audioSort ? audioSort.value : 'name';
+        let files = audioFilesData.filter(f =>
+            !poolId || (poolId === '__none__' ? f.pools.length === 0 : f.pools.some(p => p.id === poolId)));
+        const posIn = f => (f.pools.find(p => p.id === poolId) || {}).position || 0;
+        const cmp = {
+            name: (a, b) => a.filename.localeCompare(b.filename),
+            newest: (a, b) => (b.modified || 0) - (a.modified || 0),
+            oldest: (a, b) => (a.modified || 0) - (b.modified || 0),
+            longest: (a, b) => (b.duration || 0) - (a.duration || 0),
+            shortest: (a, b) => (a.duration || 0) - (b.duration || 0),
+            pool: (a, b) => (a.pools[0] ? a.pools[0].name : '\uffff').localeCompare(b.pools[0] ? b.pools[0].name : '\uffff') || a.filename.localeCompare(b.filename),
+            order: (a, b) => posIn(a) - posIn(b),
+        }[sortBy] || (() => 0);
+        files = files.slice().sort(cmp);
+        audioFileList.innerHTML = '';
+        if (!files.length) {
+            audioFileList.innerHTML = '<li class="list-group-item text-muted">No files match.</li>';
+            return;
+        }
+        files.forEach(fileInfo => {
+            const { filename, is_default, has_timestamps } = fileInfo;
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+
+            const head = document.createElement('div');
+            head.className = 'd-flex justify-content-between align-items-start flex-wrap';
+            const title = document.createElement('div');
+            const nameEl = document.createElement('strong');
+            nameEl.textContent = filename;
+            title.appendChild(nameEl);
+            const addBadge = (text, cls) => {
+                const b = document.createElement('span');
+                b.className = 'badge ms-1 ' + cls;
+                b.textContent = text;
+                title.appendChild(b);
+            };
+            if (is_default) addBadge('Default', 'bg-primary');
+            fileInfo.pools.forEach(p => addBadge(poolId === p.id ? `${p.name} #${p.position}` : p.name, 'bg-secondary'));
+            if (!fileInfo.pools.length) addBadge('No pool', 'bg-light text-dark border');
+            const meta = document.createElement('div');
+            meta.className = 'form-text';
+            const added = fileInfo.modified ? new Date(fileInfo.modified * 1000).toLocaleDateString() : '';
+            meta.textContent = [fmtDuration(fileInfo.duration), added && 'added ' + added].filter(Boolean).join(' · ');
+            title.appendChild(meta);
+
+            const buttonGroup = document.createElement('div');
+            buttonGroup.className = 'btn-group mt-1 mt-md-0';
+            if (!has_timestamps) {
+                const generateBtn = document.createElement('button');
+                generateBtn.className = 'btn btn-sm btn-info me-1 btn-generate-timestamps';
+                generateBtn.textContent = 'Gen Timestamps';
+                generateBtn.dataset.filename = filename;
+                generateBtn.onclick = function() { generateTimestamps(filename); };
+                buttonGroup.appendChild(generateBtn);
+            } else {
+                const timestampsBadge = document.createElement('span');
+                timestampsBadge.className = 'badge bg-info me-1 align-self-center';
+                timestampsBadge.textContent = 'Has Timestamps';
+                buttonGroup.appendChild(timestampsBadge);
+            }
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-sm btn-danger btn-delete-audio';
+            delBtn.textContent = 'Delete';
+            delBtn.dataset.filename = filename;
+            delBtn.onclick = function() { deleteAudioFile(filename); };
+            buttonGroup.appendChild(delBtn);
+            head.appendChild(title);
+            head.appendChild(buttonGroup);
+            li.appendChild(head);
+
+            const desc = document.createElement('input');
+            desc.type = 'text';
+            desc.className = 'form-control form-control-sm mt-2';
+            desc.placeholder = 'Description (e.g. Clue 3: glass T)';
+            desc.value = fileInfo.description || '';
+            desc.addEventListener('change', async () => {
+                const resp = await fetch('/api/audio/description', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename, description: desc.value }) });
+                if (resp.ok) { fileInfo.description = desc.value.trim(); desc.classList.add('is-valid'); setTimeout(() => desc.classList.remove('is-valid'), 1500); }
+                else desc.classList.add('is-invalid');
+            });
+            li.appendChild(desc);
+
+            const player = document.createElement('audio');
+            player.controls = true;
+            player.preload = 'none';
+            player.className = 'w-100 mt-2';
+            player.src = '/SoundFiles/' + encodeURIComponent(filename);
+            // Only one file plays at a time
+            player.addEventListener('play', () => {
+                audioFileList.querySelectorAll('audio').forEach(a => { if (a !== player) a.pause(); });
+            });
+            li.appendChild(player);
+            audioFileList.appendChild(li);
+        });
+    }
+    if (audioSort) audioSort.addEventListener('change', renderAudioList);
+    if (audioPoolFilter) audioPoolFilter.addEventListener('change', renderAudioList);
+
     function loadAudioFiles() {
         if (IS_AP_MODE) { // Don't load audio files if in AP mode
             if(audioFileList) audioFileList.innerHTML = '<li class="list-group-item">Audio management disabled in AP Mode.</li>';
@@ -95,57 +220,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 if(audioFileList) audioFileList.innerHTML = '';
                 if(selectDefaultAudio) selectDefaultAudio.innerHTML = '';
                 
+                audioFilesData = data.files;
+                renderAudioList();
                 data.files.forEach(fileInfo => {
-                    const { filename, is_default, has_timestamps } = fileInfo;
-                    if (audioFileList) {
-                        const li = document.createElement('li');
-                        li.className = 'list-group-item d-flex justify-content-between align-items-center flex-wrap';
-                        
-                        let fileLabel = filename;
-                        if (is_default) {
-                            fileLabel += ' <span class="badge bg-primary ms-1">Default</span>';
-                        }
-                        
-                        const fileSpan = document.createElement('span');
-                        fileSpan.innerHTML = fileLabel; // Use innerHTML for badges
-
-                        const buttonGroup = document.createElement('div');
-                        buttonGroup.className = 'btn-group mt-1 mt-md-0'; // Responsive margin
-
-                        if (!has_timestamps) {
-                            const generateBtn = document.createElement('button');
-                            generateBtn.className = 'btn btn-sm btn-info me-1 btn-generate-timestamps';
-                            generateBtn.textContent = 'Gen Timestamps';
-                            generateBtn.dataset.filename = filename;
-                            generateBtn.onclick = function() { generateTimestamps(filename); };
-                            buttonGroup.appendChild(generateBtn);
-                        } else {
-                            const timestampsBadge = document.createElement('span');
-                            timestampsBadge.className = 'badge bg-info me-1 align-self-center';
-                            timestampsBadge.textContent = 'Has Timestamps';
-                            buttonGroup.appendChild(timestampsBadge);
-                        }
-
-                        const delBtn = document.createElement('button');
-                        delBtn.className = 'btn btn-sm btn-danger btn-delete-audio';
-                        delBtn.textContent = 'Delete';
-                        delBtn.dataset.filename = filename;
-                        delBtn.onclick = function() { deleteAudioFile(filename); };
-                        buttonGroup.appendChild(delBtn);
-
-                        li.appendChild(fileSpan);
-                        li.appendChild(buttonGroup);
-                        audioFileList.appendChild(li);
-                    }
-
                     if (selectDefaultAudio) {
                         const opt = document.createElement('option');
-                        opt.value = filename;
-                        opt.textContent = filename;
-                        if (is_default) opt.selected = true;
+                        opt.value = fileInfo.filename;
+                        opt.textContent = fileInfo.filename;
+                        if (fileInfo.is_default) opt.selected = true;
                         selectDefaultAudio.appendChild(opt);
                     }
                 });
+                refreshPoolFilter();
                 if (currentDefaultAudio) {
                     currentDefaultAudio.textContent = data.default || 'None';
                 }
@@ -950,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const payload = { name: inputName.value, order: selectOrder.value, files: checks.filter(c => c.checked).map(c => c.value) };
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         const result = await resp.json();
-                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadPools(); loadTriggers(); loadSchedules(); }
+                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadAudioFiles(); loadPools(); loadTriggers(); loadSchedules(); }
                         else displayPoolMessage(result.error || 'Save failed', true);
                     } catch (e) { displayPoolMessage('Save failed', true); }
                 });
@@ -962,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     try {
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'DELETE' });
                         const result = await resp.json();
-                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadPools(); loadTriggers(); loadSchedules(); }
+                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadAudioFiles(); loadPools(); loadTriggers(); loadSchedules(); }
                         else displayPoolMessage(result.error || 'Delete failed', true);
                     } catch (e) { displayPoolMessage('Delete failed', true); }
                 });

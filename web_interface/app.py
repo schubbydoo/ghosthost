@@ -36,17 +36,46 @@ def home():
 
 @app.route('/api/audio/files', methods=['GET'])
 def list_audio_files_api():
+    config.load_config()
     files = audio_controller.list_audio_files()
     default_file = config.get('audio.default_file', '')
+    descriptions = config.get('audio_descriptions', {}) or {}
+    # Which pools hold each file, in pool order, plus its position in each
+    pools_by_file = {}
+    for pool in config.get('greeting_pools', []) or []:
+        for i, f in enumerate(pool.get('files') or []):
+            pools_by_file.setdefault(f, []).append(
+                {'id': pool.get('id'), 'name': pool.get('name'), 'position': i + 1})
     file_infos = []
     for filename in files:
-        info = audio_controller.get_audio_info(filename)
+        info = audio_controller.get_audio_info(filename) or {}
         file_infos.append({
             'filename': filename,
             'is_default': filename == default_file,
-            'has_timestamps': info.get('has_timestamps', False) if info else False
+            'has_timestamps': info.get('has_timestamps', False),
+            'description': descriptions.get(filename, ''),
+            'duration': info.get('duration'),
+            'modified': info.get('modified'),
+            'pools': pools_by_file.get(filename, []),
         })
     return jsonify({'files': file_infos, 'default': default_file})
+
+@app.route('/api/audio/description', methods=['POST'])
+def set_audio_description_api():
+    config.load_config()
+    data = request.get_json() or {}
+    filename = data.get('filename')
+    if filename not in audio_controller.list_audio_files():
+        return jsonify({'error': 'File not found'}), 404
+    descriptions = config.get('audio_descriptions', {}) or {}
+    text = (data.get('description') or '').strip()
+    if text:
+        descriptions[filename] = text
+    else:
+        descriptions.pop(filename, None)
+    config.set('audio_descriptions', descriptions)
+    config.save_config()
+    return jsonify({'success': True})
 
 @app.route('/api/audio/info/<path:filename>', methods=['GET'])
 def get_audio_info_api(filename):

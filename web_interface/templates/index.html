@@ -80,6 +80,24 @@
                 <!-- Audio File List -->
                 <div class="mb-3">
                     <h5>Available Audio Files</h5>
+                    <div class="row g-2 mb-2">
+                        <div class="col-sm-6">
+                            <select class="form-select form-select-sm" id="audio-sort" aria-label="Sort files">
+                                <option value="name">Sort: Name</option>
+                                <option value="newest">Sort: Newest added</option>
+                                <option value="oldest">Sort: Oldest added</option>
+                                <option value="longest">Sort: Longest</option>
+                                <option value="shortest">Sort: Shortest</option>
+                                <option value="pool">Sort: Pool</option>
+                                <option value="order">Sort: Order within pool (pick a pool)</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <select class="form-select form-select-sm" id="audio-pool-filter" aria-label="Filter by pool">
+                                <option value="">All files</option>
+                            </select>
+                        </div>
+                    </div>
                     <ul class="list-group" id="audio-file-list">
                         <!-- Populated by JS. Example of list item structure for JS:
                         <li class="list-group-item d-flex justify-content-between align-items-center">
