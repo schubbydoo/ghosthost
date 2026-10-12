@@ -35,3 +35,6 @@ __pycache__/
 
 # Ad-hoc backups taken before editing a live file
 *.bak-*
+
+# Rendered per-file volume boosts (rebuilt on demand)
+SoundFiles/.gain_cache/

@@ -41,6 +41,7 @@ def list_audio_files_api():
     default_file = config.get('audio.default_file', '')
     descriptions = config.get('audio_descriptions', {}) or {}
     live_files = set(config.get('live_files', []) or [])
+    gains = config.get('audio_gains', {}) or {}
     # Which pools hold each file, in pool order, plus its position in each
     pools_by_file = {}
     for pool in config.get('greeting_pools', []) or []:
@@ -56,11 +57,56 @@ def list_audio_files_api():
             'has_timestamps': info.get('has_timestamps', False),
             'description': descriptions.get(filename, ''),
             'live': filename in live_files,
+            'gain_db': gains.get(filename, 0),
             'duration': info.get('duration'),
             'modified': info.get('modified'),
             'pools': pools_by_file.get(filename, []),
         })
     return jsonify({'files': file_infos, 'default': default_file})
+
+@app.route('/api/audio/gain', methods=['POST'])
+def set_audio_gain_api():
+    """Set a per-file volume boost in dB (0 clears it): {filename, gain_db}. The
+    boosted copy is rendered now so the next play starts instantly."""
+    config.load_config()
+    data = request.get_json() or {}
+    filename = data.get('filename')
+    if filename not in audio_controller.list_audio_files():
+        return jsonify({'error': 'File not found'}), 404
+    try:
+        gain = round(float(data.get('gain_db', 0)), 1)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'gain_db must be a number'}), 400
+    limit = audio_controller.MAX_GAIN_DB
+    if not -limit <= gain <= limit:
+        return jsonify({'error': f'gain_db must be between -{limit} and {limit}'}), 400
+    gains = config.get('audio_gains', {}) or {}
+    audio_controller.clear_gain_cache(filename)
+    if gain:
+        if not audio_controller.gain_path(filename, gain):
+            return jsonify({'error': 'Could not render the boosted copy (is ffmpeg installed?)'}), 500
+        gains[filename] = gain
+    else:
+        gains.pop(filename, None)
+    config.set('audio_gains', gains)
+    config.save_config()
+    return jsonify({'success': True, 'gain_db': gain})
+
+@app.route('/api/audio/preview/<path:filename>')
+def preview_audio_api(filename):
+    """The file as the prop will play it (with its boost), for the browser player."""
+    safe = os.path.basename(filename)
+    if safe not in audio_controller.list_audio_files():
+        return jsonify({'error': 'File not found'}), 404
+    config.load_config()
+    path = None
+    gain = audio_controller.get_gain(safe)
+    if gain:
+        path = audio_controller.gain_path(safe, gain)
+    if not path:
+        soundfiles = os.path.abspath(os.path.join(app.root_path, '..', config.get('audio.soundfiles_dir', 'SoundFiles')))
+        return send_from_directory(soundfiles, safe)
+    return send_from_directory(os.path.dirname(os.path.abspath(path)), os.path.basename(path))
 
 @app.route('/api/audio/description', methods=['POST'])
 def set_audio_description_api():

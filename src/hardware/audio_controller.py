@@ -22,6 +22,7 @@ class AudioController:
         # Audio state tracking
         self.is_playing = False
         self.current_audio_thread = None
+        self._proc = None  # running aplay, so stop_audio can really stop it
         self.playback_complete_callback = None
         
         self.logger.info("Audio Controller initialized")
@@ -70,6 +71,52 @@ class AudioController:
             self.logger.error(f"Error getting volume: {e}")
             return self.audio_settings.get('volume', 80)
     
+    # --- Per-file gain -------------------------------------------------------
+    # The system volume tops out at 100%, and a small USB speaker can still be too
+    # quiet. A boost is baked into a cached copy with ffmpeg (a limiter keeps the
+    # peaks from clipping, which also makes speech sound louder on tiny speakers).
+    # Duration is unchanged, so mouth-sync still lines up.
+
+    MAX_GAIN_DB = 20
+
+    def get_gain(self, filename: str) -> float:
+        gains = self.config.get('audio_gains', {}) or {}
+        try:
+            return float(gains.get(filename, 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _gain_cache_dir(self) -> Path:
+        return Path(self.audio_settings.get('soundfiles_dir', 'SoundFiles')) / '.gain_cache'
+
+    def clear_gain_cache(self, filename: str):
+        stem = Path(filename).stem
+        for old in self._gain_cache_dir().glob(f'{stem}__*dB.wav'):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+
+    def gain_path(self, filename: str, gain_db: float) -> Optional[Path]:
+        """Path of the boosted copy, rendering it if missing or older than the
+        original. Returns None if it can't be made (caller plays the original)."""
+        source = Path(self.audio_settings.get('soundfiles_dir', 'SoundFiles')) / filename
+        out = self._gain_cache_dir() / f'{source.stem}__{gain_db:+.1f}dB.wav'
+        try:
+            if out.exists() and out.stat().st_mtime >= source.stat().st_mtime:
+                return out
+            out.parent.mkdir(exist_ok=True)
+            tmp = out.with_suffix('.tmp.wav')
+            subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(source),
+                            '-af', f'volume={gain_db}dB,alimiter=limit=0.97',
+                            '-c:a', 'pcm_s16le', str(tmp)],
+                           check=True, capture_output=True, timeout=120)
+            tmp.replace(out)
+            return out
+        except Exception as e:
+            self.logger.error(f"Could not render {gain_db:+}dB copy of {filename}: {e}")
+            return None
+
     def play_audio_file(self, filename: str, completion_callback: Optional[Callable] = None) -> bool:
         """Play audio file with optional completion callback using aplay subprocess"""
         if self.is_playing:
@@ -83,6 +130,13 @@ class AudioController:
         if not audio_path.exists():
             self.logger.error(f"Audio file not found: {audio_path}")
             return False
+
+        # A per-file boost plays from a pre-rendered louder copy; the original
+        # name is still what mouth-sync timestamps are looked up by.
+        self.config.load_config()
+        gain_db = self.get_gain(filename)
+        if gain_db:
+            audio_path = self.gain_path(filename, gain_db) or audio_path
         
         self.is_playing = True
         self.playback_complete_callback = completion_callback
@@ -101,14 +155,19 @@ class AudioController:
     def _play_audio_worker(self, audio_path: str):
         """Worker thread for audio playback using aplay subprocess"""
         try:
-            result = subprocess.run(['aplay', audio_path], capture_output=True, text=True)
-            if result.returncode == 0:
+            self._proc = subprocess.Popen(['aplay', audio_path], stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, text=True)
+            _, stderr = self._proc.communicate()
+            if self._proc.returncode == 0:
                 self.logger.info(f"Audio playback completed: {audio_path}")
+            elif self._proc.returncode < 0:
+                self.logger.info(f"Audio playback stopped: {audio_path}")
             else:
-                self.logger.error(f"aplay failed: {result.stderr}")
+                self.logger.error(f"aplay failed: {stderr}")
         except Exception as e:
             self.logger.error(f"Error playing audio {audio_path}: {e}")
         finally:
+            self._proc = None
             self.is_playing = False
             if self.playback_complete_callback:
                 try:
@@ -119,10 +178,9 @@ class AudioController:
     
     def stop_audio(self):
         """Stop current audio playback"""
-        if self.is_playing:
-            self.is_playing = False
-            # Note: pydub doesn't provide easy way to stop playback
-            # In a production system, you might want to use a different audio library
+        proc = self._proc
+        if proc and proc.poll() is None:
+            proc.terminate()
             self.logger.info("Audio stop requested")
     
     def get_audio_duration(self, filename: str) -> Optional[float]:
@@ -205,6 +263,7 @@ class AudioController:
             
             # Delete audio file
             audio_path.unlink()
+            self.clear_gain_cache(filename)
             
             # Delete timestamp file if it exists
             if timestamp_path.exists():

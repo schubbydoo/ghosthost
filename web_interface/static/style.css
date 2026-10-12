@@ -211,3 +211,6 @@ audio { height: 36px; color-scheme: dark; }
 .live-stop:hover { border-color: var(--danger); }
 #live-state { font-size: 14px; padding: 4px 14px; }
 @media (max-width: 520px) { .live-grid { grid-template-columns: 1fr; } }
+
+.gain-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.gain-row input[type=range] { max-width: 260px; }

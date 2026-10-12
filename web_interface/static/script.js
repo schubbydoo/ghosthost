@@ -207,11 +207,55 @@ document.addEventListener('DOMContentLoaded', function() {
             liveWrap.appendChild(document.createTextNode(' Live button (show on the Live tab)'));
             li.appendChild(liveWrap);
 
+            // Per-file boost: the system volume tops out, this raises just this clip
+            const gainRow = document.createElement('div');
+            gainRow.className = 'gain-row mt-2';
+            const gainLbl = document.createElement('label');
+            gainLbl.textContent = 'Boost';
+            gainLbl.style.margin = '0';
+            const gainSlider = document.createElement('input');
+            gainSlider.type = 'range';
+            gainSlider.min = -10; gainSlider.max = 20; gainSlider.step = 1;
+            gainSlider.value = fileInfo.gain_db || 0;
+            const gainVal = document.createElement('span');
+            gainVal.className = 'form-text';
+            const fmtGain = v => (v > 0 ? '+' : '') + v + ' dB' + (v == 0 ? ' (original)' : '');
+            gainVal.textContent = fmtGain(+gainSlider.value);
+            gainSlider.addEventListener('input', () => { gainVal.textContent = fmtGain(+gainSlider.value); });
+            gainSlider.addEventListener('change', async () => {
+                gainVal.textContent = 'rendering...';
+                gainSlider.disabled = true;
+                try {
+                    const resp = await fetch('/api/audio/gain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename, gain_db: +gainSlider.value }) });
+                    const result = await resp.json();
+                    if (resp.ok && result.success) {
+                        fileInfo.gain_db = result.gain_db;
+                        gainVal.textContent = fmtGain(result.gain_db) + ' saved';
+                        player.src = (result.gain_db ? '/api/audio/preview/' : '/SoundFiles/') + encodeURIComponent(filename) + '?t=' + Date.now();
+                    } else gainVal.textContent = result.error || 'failed';
+                } catch (e) { gainVal.textContent = 'failed'; }
+                gainSlider.disabled = false;
+            });
+            const btnOnProp = document.createElement('button');
+            btnOnProp.type = 'button';
+            btnOnProp.className = 'btn btn-sm btn-info';
+            btnOnProp.textContent = 'Play on prop';
+            btnOnProp.addEventListener('click', async () => {
+                const resp = await fetch('/api/live/play', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio_file: filename }) });
+                const result = await resp.json();
+                gainVal.textContent = result.success ? 'playing on the prop' : (result.message || 'failed');
+            });
+            gainRow.appendChild(gainLbl);
+            gainRow.appendChild(gainSlider);
+            gainRow.appendChild(gainVal);
+            gainRow.appendChild(btnOnProp);
+            li.appendChild(gainRow);
+
             const player = document.createElement('audio');
             player.controls = true;
             player.preload = 'none';
             player.className = 'w-100 mt-2';
-            player.src = '/SoundFiles/' + encodeURIComponent(filename);
+            player.src = (fileInfo.gain_db ? '/api/audio/preview/' : '/SoundFiles/') + encodeURIComponent(filename);
             // Only one file plays at a time
             player.addEventListener('play', () => {
                 audioFileList.querySelectorAll('audio').forEach(a => { if (a !== player) a.pause(); });
