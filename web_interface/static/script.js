@@ -1078,12 +1078,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (btnAddPool) {
         btnAddPool.addEventListener('click', async () => {
-            const name = prompt('Enter pool name:', 'New Pool');
-            if (name === null) return;
+            const nameInput = document.getElementById('new-pool-name');
+            const name = (nameInput && nameInput.value.trim()) || 'New Pool';
             try {
                 const resp = await fetch('/api/greeting_pools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, files: [] }) });
                 const result = await resp.json();
-                if (resp.ok && result.success) { displayPoolMessage('Pool created - tick the greetings to include, then Save Pool'); loadPools(); }
+                if (resp.ok && result.success) { displayPoolMessage(`Pool '${name}' created - tick the greetings to include, then Save Pool`); if (nameInput) nameInput.value = ''; loadPools(); }
                 else displayPoolMessage(result.error || 'Create failed', true);
             } catch (e) { displayPoolMessage('Create failed', true); }
         });
@@ -1232,10 +1232,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnAddSchedule = document.getElementById('btn-add-schedule');
     if (btnAddSchedule) {
         btnAddSchedule.addEventListener('click', async () => {
-            const name = prompt('Enter schedule name:', 'Clues');
-            if (name === null) return;
+            const nameInput = document.getElementById('new-schedule-name');
+            const name = (nameInput && nameInput.value.trim()) || 'New Schedule';
             const { ok, result } = await postJson('/api/schedules', { name });
-            if (ok) { showMsg(scheduleMsg, 'Schedule created - set its steps, then Save Schedule'); loadSchedules(); }
+            if (ok) { showMsg(scheduleMsg, 'Schedule created - set its steps, then Save Schedule'); if (nameInput) nameInput.value = ''; loadSchedules(); }
             else showMsg(scheduleMsg, result.error || 'Create failed', true);
         });
     }

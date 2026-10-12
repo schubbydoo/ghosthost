@@ -154,7 +154,8 @@
             </div>
             <div class="card-body">
                 <p class="form-text">A pool plays its greetings in random order (using every greeting once before any repeats) or, with Play order set to In order, top to bottom and then loops. Each greeting keeps its own mouth-sync timestamps, so generate timestamps for every file in a pool.</p>
-                <div class="mb-3">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="new-pool-name" placeholder="New pool name (e.g. Entry, Clues 1)">
                     <button class="btn btn-primary" id="btn-add-pool">Add Pool</button>
                 </div>
                 <div id="pool-status" class="form-text mb-2"></div>
@@ -181,7 +182,10 @@
             <div class="card-header">Schedules</div>
             <div class="card-body">
                 <p class="form-text">A schedule switches pools at set local times. Assign it to a sensor port or network trigger like a pool. Make each later pool include the earlier clues so late players still hear them. Times before the night rollover count as after midnight of the same party night.</p>
-                <div class="mb-3"><button class="btn btn-primary" id="btn-add-schedule">Add Schedule</button></div>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="new-schedule-name" placeholder="New schedule name (e.g. Curse Clues)">
+                    <button class="btn btn-primary" id="btn-add-schedule">Add Schedule</button>
+                </div>
                 <div id="schedule-msg" class="form-text mb-2"></div>
                 <div id="schedule-list"><!-- Populated by JS --></div>
             </div>
