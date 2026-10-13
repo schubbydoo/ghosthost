@@ -100,7 +100,7 @@ class LEDController:
             self.blink_thread.join(timeout=1.0)
         self.logger.info("Eye blinking stopped")
     
-    def flash_eyes(self, flash_count: int = 3, flash_speed: float = 0.1):
+    def flash_eyes(self, flash_count: int = 3, flash_speed: float = 0.1, end_on: bool = True):
         """Quick flash eyes specified number of times"""
         self.logger.info(f"Flashing eyes {flash_count} times")
         
@@ -110,8 +110,9 @@ class LEDController:
             self.turn_off_eyes()
             time.sleep(flash_speed)
         
-        # Turn eyes back on after flashing
-        self.turn_on_eyes()
+        # Leave the eyes in the requested state after flashing
+        if end_on:
+            self.turn_on_eyes()
     
     def eyes_on_during_audio(self, audio_duration: float):
         """Turn eyes on for the duration of audio playback"""

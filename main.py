@@ -81,8 +81,8 @@ def main():
         except Exception as e:
             logger.error(f"Failed to start Trigger Server: {e}")
         
-        # Flash eyes to indicate system ready
-        event_handler.led_controller.flash_eyes(3, 0.2)
+        # Flash eyes to indicate system ready, then leave them off until a performance
+        event_handler.led_controller.flash_eyes(3, 0.2, end_on=False)
         
         logger.info("Ghost Host system ready! Waiting for sensor triggers...")
         logger.info("Press Ctrl+C to shutdown")
