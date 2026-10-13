@@ -4,11 +4,16 @@ Configuration Manager for Ghost Host
 Handles loading, validating, and updating configuration settings.
 """
 
+import copy
 import yaml
 import os
 import logging
 from typing import Dict, Any
 from pathlib import Path
+
+# libyaml parser when available: much faster on a Pi
+_YamlLoader = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
+
 
 class ConfigManager:
     def __init__(self, config_path: str = "config/default_config.yaml"):
@@ -17,12 +22,27 @@ class ConfigManager:
         self.logger = logging.getLogger(__name__)
         self.load_config()
     
+    def _file_stamp(self):
+        st = self.config_path.stat()
+        return (st.st_mtime_ns, st.st_size)
+
     def load_config(self):
-        """Load configuration from YAML file"""
+        """Load configuration from YAML file.
+
+        The web UI and controller call this constantly to pick up each other's
+        edits, so the parsed YAML is cached and only re-read when the file
+        changes. Callers still get a fresh copy, discarding unsaved edits.
+        """
         try:
             if self.config_path.exists():
+                stamp = self._file_stamp()
+                if stamp == getattr(self, '_cache_stamp', None):
+                    self.config = copy.deepcopy(self._cache_data)
+                    return
                 with open(self.config_path, 'r') as file:
-                    self.config = yaml.safe_load(file)
+                    self.config = yaml.load(file, Loader=_YamlLoader)
+                self._cache_stamp = stamp
+                self._cache_data = copy.deepcopy(self.config)
                 self.logger.info(f"Configuration loaded from {self.config_path}")
             else:
                 self.logger.error(f"Configuration file not found: {self.config_path}")
@@ -39,6 +59,7 @@ class ConfigManager:
             
             with open(self.config_path, 'w') as file:
                 yaml.dump(self.config, file, default_flow_style=False, indent=2)
+            self._cache_stamp = None
             self.logger.info(f"Configuration saved to {self.config_path}")
             return True
         except Exception as e:
