@@ -1413,6 +1413,58 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(() => { if (!document.hidden) loadLiveStatus(); }, 3000);
     document.querySelectorAll('nav.tabs a[data-tab="live"]').forEach(a => a.addEventListener('click', loadLive));
 
+    // --- SENSOR TEST (Live tab) ---
+    // Polls only while the Live tab is showing: the pin poll runs on the Pi's own
+    // 20ms thread, so brief PIR pulses are kept in its edge log and fetched by sequence.
+    const sensorTestPorts = document.getElementById('sensor-test-ports');
+    if (sensorTestPorts) {
+        const logEl = document.getElementById('sensor-test-log');
+        const silent = document.getElementById('sensor-test-silent');
+        const silentNote = document.getElementById('sensor-test-silent-note');
+        const labels = { sensor_port_left: 'Left port', sensor_port_right: 'Right port' };
+        let lastSeq = null, logStarted = false;
+        const tabVisible = () => !document.hidden && sensorTestPorts.closest('.tab-pane').classList.contains('active');
+        async function pollSensorTest() {
+            if (!tabVisible()) return;
+            let d;
+            try { d = await (await fetch('/api/live/sensors?since=' + (lastSeq || 0))).json(); } catch (e) { return; }
+            if (!d.success) return;
+            Object.keys(d.levels).forEach(name => {
+                let el = document.getElementById('sensor-led-' + name);
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'sensor-led-' + name;
+                    el.className = 'sensor-led';
+                    el.innerHTML = '<span class="dot"></span><div><div class="name"></div><div class="sub"></div></div>';
+                    sensorTestPorts.appendChild(el);
+                }
+                const lv = d.levels[name];
+                el.classList.toggle('high', lv.level === 1);
+                el.querySelector('.name').textContent = (labels[name] || name) + ': ' + (lv.level ? 'HIGH' : 'LOW');
+                el.querySelector('.sub').textContent = 'GPIO' + lv.pin;
+            });
+            // First poll only sets the baseline; old edges are not news
+            if (lastSeq !== null) {
+                d.events.forEach(e => {
+                    if (!logStarted) { logEl.innerHTML = ''; logStarted = true; }
+                    const row = document.createElement('div');
+                    row.textContent = new Date(e.time * 1000).toLocaleTimeString() + '  ' + (labels[e.sensor] || e.sensor) + ' -> ' + (e.level ? 'HIGH' : 'LOW');
+                    logEl.insertBefore(row, logEl.firstChild);
+                });
+                while (logEl.children.length > 50) logEl.removeChild(logEl.lastChild);
+            }
+            lastSeq = d.seq;
+            silent.checked = !!d.test_mode;
+            silentNote.textContent = d.test_mode ? '(ends in ' + d.test_mode_remaining + 's)' : '';
+        }
+        silent.addEventListener('change', async () => {
+            await fetch('/api/live/sensor_test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: silent.checked }) });
+            pollSensorTest();
+        });
+        setInterval(pollSensorTest, 500);
+        pollSensorTest();
+    }
+
     // --- DASHBOARD HEALTH ---
     async function loadHealth() {
         const grid = document.getElementById('health-grid');

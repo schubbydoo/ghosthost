@@ -8,6 +8,7 @@ import RPi.GPIO as GPIO
 import time
 import threading
 import logging
+from collections import deque
 from typing import Callable, Optional
 from enum import Enum
 
@@ -27,6 +28,15 @@ class SensorManager:
         self.last_trigger_time = {}
         self.in_cooldown = False
         self.cooldown_end_time = 0
+
+        # Every level change on a sensor pin (not just rising edges), for the
+        # web UI's sensor test. A PIR pulse can be shorter than a page poll, so
+        # the poll thread records them and the UI asks for what it missed.
+        self.edge_log = deque(maxlen=100)
+        self._edge_seq = 0
+        # While set (a time.time() deadline) sensor edges are logged but do not
+        # start a performance. Expires by itself so it cannot be left on.
+        self.test_mode_until = 0
         
         # Button hold detection for AP mode
         self.button_press_start = None
@@ -74,15 +84,45 @@ class SensorManager:
                     continue
                 state = GPIO.input(pin)
                 last_state = self._last_pin_state.get(pin_name, 0)
+                if state != last_state:
+                    self._edge_seq += 1
+                    self.edge_log.append({'seq': self._edge_seq, 'time': time.time(),
+                                          'sensor': pin_name, 'level': int(state)})
                 # Detect rising edge (LOW to HIGH)
                 if last_state == 0 and state == 1:
                     self._sensor_triggered(pin_name)
                 self._last_pin_state[pin_name] = state
             time.sleep(poll_interval)
     
+    def set_test_mode(self, on: bool, duration: float = 300):
+        """Silence sensor-started performances for a while (sensor test)."""
+        self.test_mode_until = time.time() + duration if on else 0
+
+    def in_test_mode(self) -> bool:
+        return time.time() < self.test_mode_until
+
+    def get_pin_activity(self, since: int = 0) -> dict:
+        """Current pin levels plus level changes after sequence number `since`."""
+        levels = {}
+        for name in ('sensor_port_left', 'sensor_port_right'):
+            pin = self.gpio_pins.get(name)
+            if pin:
+                levels[name] = {'pin': pin, 'level': int(GPIO.input(pin))}
+        return {
+            'levels': levels,
+            'events': [e for e in list(self.edge_log) if e['seq'] > since],
+            'seq': self._edge_seq,
+            'test_mode': self.in_test_mode(),
+            'test_mode_remaining': max(0, round(self.test_mode_until - time.time())),
+        }
+
     def _sensor_triggered(self, sensor_name: str):
         """Handle sensor trigger with debouncing and cooldown logic"""
         current_time = time.time()
+
+        if self.in_test_mode():
+            self.logger.info(f"Sensor {sensor_name} triggered in test mode, not performing")
+            return
         
         # Check if we're in cooldown period
         if self.in_cooldown and current_time < self.cooldown_end_time:

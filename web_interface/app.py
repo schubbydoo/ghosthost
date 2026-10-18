@@ -322,6 +322,22 @@ def live_sensor():
         return jsonify({'success': False, 'message': 'Unknown sensor'}), 400
     return jsonify(_controller_post('sensor', {'sensor': sensor}))
 
+@app.route('/api/live/sensors', methods=['GET'])
+def live_sensor_levels():
+    """Raw pin levels and recent level changes, for the sensor test on the Live tab"""
+    port = config.get('network_trigger.port', 5055)
+    try:
+        since = int(request.args.get('since', 0))
+        r = requests.get(f'http://127.0.0.1:{port}/api/live/sensors', params={'since': since}, timeout=2)
+        return jsonify(r.json())
+    except Exception:
+        return jsonify({'success': False, 'message': 'Controller not responding'})
+
+@app.route('/api/live/sensor_test', methods=['POST'])
+def live_sensor_test():
+    on = bool((request.get_json() or {}).get('on'))
+    return jsonify(_controller_post('sensor_test', {'on': on}))
+
 @app.route('/api/live/stop', methods=['POST'])
 def live_stop():
     return jsonify(_controller_post('stop', {}))

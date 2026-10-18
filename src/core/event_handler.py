@@ -133,6 +133,9 @@ class EventHandler:
             self.stop_performance()
             self.force_end_cooldown()
             return {'success': True, 'message': 'Stopped' if was_active else 'Nothing was playing'}
+        if command == 'sensor_test':
+            self.sensor_manager.set_test_mode(bool(body.get('on')))
+            return {'success': True, 'test_mode': self.sensor_manager.in_test_mode()}
         if command == 'sensor':
             try:
                 sensor_type = SensorType(body.get('sensor'))

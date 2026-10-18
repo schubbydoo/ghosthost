@@ -249,6 +249,9 @@ python motor_test_tool.py
 # Check sensor status via web interface
 # Or check logs
 tail -f logs/ghosthost.log
+
+# Watch the raw pin levels (see docs/sensor-ports.md for jack pinout and diagnosis)
+python3 -u tools/sensor_test.py
 ```
 
 **WiFi connection issues**:

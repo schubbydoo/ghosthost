@@ -124,6 +124,19 @@
                     <div class="live-grid" id="live-sensors"></div>
                 </div>
             </div>
+
+            <div class="card mb-4">
+                <div class="card-header">Sensor test</div>
+                <div class="card-body">
+                    <p class="form-text mb-3">Shows what each port's pin is doing right now. Wave at a sensor and watch for HIGH. Idle is LOW for a working PIR; a port that stays HIGH with nothing moving points to a wiring or sensor fault.</p>
+                    <div class="live-grid" id="sensor-test-ports"></div>
+                    <label class="form-check mt-3">
+                        <input type="checkbox" class="form-check-input" id="sensor-test-silent">
+                        Don't play audio while testing <span class="form-text" id="sensor-test-silent-note"></span>
+                    </label>
+                    <div class="sensor-test-log" id="sensor-test-log"><span class="form-text">Waiting for activity...</span></div>
+                </div>
+            </div>
         </section>
         <section class="tab-pane" data-tab="media">
             <h2 class="pane-title">Media</h2>

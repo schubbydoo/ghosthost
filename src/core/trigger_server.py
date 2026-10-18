@@ -70,6 +70,18 @@ class TriggerServer:
                 useful for a human without handing out the keys.
                 """
                 parsed = urlparse(self.path)
+                if parsed.path.strip('/') == 'api/live/sensors':
+                    # Pin levels and recent edges for the web UI's sensor test
+                    if self.client_address[0] not in ('127.0.0.1', '::1'):
+                        return self._json_response(403, {'success': False, 'message': 'Local only'})
+                    try:
+                        since = int(parse_qs(parsed.query).get('since', ['0'])[0])
+                    except ValueError:
+                        since = 0
+                    data = outer.event_handler.sensor_manager.get_pin_activity(since)
+                    data['success'] = True
+                    return self._json_response(200, data)
+
                 if parsed.path.strip('/') != 'api/status':
                     return self._json_response(404, {'success': False,
                                                      'message': 'Not found'})

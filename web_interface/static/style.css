@@ -214,3 +214,11 @@ audio { height: 36px; color-scheme: dark; }
 
 .gain-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .gain-row input[type=range] { max-width: 260px; }
+
+.sensor-led { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; }
+.sensor-led .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--muted); flex: none; }
+.sensor-led.high .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.sensor-led .name { font-weight: 600; }
+.sensor-led .sub { font-size: 12.5px; color: var(--muted); }
+.sensor-test-log { margin-top: 12px; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+.sensor-test-log div { padding: 1px 0; }
