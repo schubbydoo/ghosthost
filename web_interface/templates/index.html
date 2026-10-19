@@ -152,6 +152,11 @@
                 <div class="card-body">
                     <p class="form-text mb-3">Runs a port exactly as a visitor would, cooldown included.</p>
                     <div class="live-grid" id="live-sensors"></div>
+                    <div class="mt-3">
+                        <label class="form-label">Switch ports on or off (a disabled port ignores its sensor)</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input" data-sensor-enabled="sensor_port_left"> Left sensor enabled</label>
+                        <label class="form-check"><input type="checkbox" class="form-check-input" data-sensor-enabled="sensor_port_right"> Right sensor enabled</label>
+                    </div>
                 </div>
             </div>
 
@@ -314,14 +319,17 @@
                     <div class="col-md-6">
                         <label for="select-pool-sensor_port_left" class="form-label">Left Sensor Port</label>
                         <select class="form-select" id="select-pool-sensor_port_left" data-sensor="sensor_port_left"></select>
+                        <label class="form-check mt-2"><input type="checkbox" class="form-check-input" data-sensor-enabled="sensor_port_left"> Enabled</label>
                     </div>
                     <div class="col-md-6">
                         <label for="select-pool-sensor_port_right" class="form-label">Right Sensor Port</label>
                         <select class="form-select" id="select-pool-sensor_port_right" data-sensor="sensor_port_right"></select>
+                        <label class="form-check mt-2"><input type="checkbox" class="form-check-input" data-sensor-enabled="sensor_port_right"> Enabled</label>
                     </div>
                 </div>
                 <div id="sensor-msg" class="form-text"></div>
-                <div class="form-text">Each sensor can play one audio file, a pool (a different clip each time), or a schedule (whichever pool is current). A sensor set to "default audio" plays the default file from the Media tab. Network triggers choose what they play below.</div>
+                <div class="form-text">Each sensor can play one audio file, a pool (a different clip each time), or a schedule (whichever pool is current). A sensor set to "default audio" plays the default file from the Media tab. Untick Enabled to switch a port off, for example the motion sensor when too much traffic sets it off and you are using the pressure pad on the other port. A disabled port never starts the prop. It is saved with the show.</div>
+                <div class="form-text">Network triggers choose what they play below.</div>
 
                 <hr>
                 <!-- Cooldown Period Control -->

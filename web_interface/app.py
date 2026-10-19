@@ -302,6 +302,7 @@ def live_state():
     all_schedules = [{'id': 'schedule:' + sc['id'], 'name': sc['name']}
                      for sc in config.get('schedules', []) or []]
     all_sensors = [{'id': p, 'label': 'Left sensor' if p.endswith('left') else 'Right sensor',
+                    'enabled': bool(config.get(f'sensor_enabled.{p}', True)),
                     'assigned': ref_label(assignments.get(p)) or 'default audio'} for p in SENSOR_PORTS]
     # None = never edited: show everything. A list = exactly those, in this show.
     live_pools = config.get('live_pools')
@@ -516,6 +517,24 @@ def set_cooldown_api():
     config.set('sensors.cooldown_period', cooldown)
     config.save_config()
     return jsonify({'success': True, 'cooldown_period': cooldown})
+
+@app.route('/api/sensor_enabled', methods=['GET'])
+def get_sensor_enabled_api():
+    config.load_config()
+    return jsonify({p: bool(config.get(f'sensor_enabled.{p}', True)) for p in SENSOR_PORTS})
+
+@app.route('/api/sensor_enabled', methods=['POST'])
+def set_sensor_enabled_api():
+    """{sensor, enabled}: switch one sensor port on or off. Part of the active show."""
+    config.load_config()
+    data = request.get_json() or {}
+    if data.get('sensor') not in SENSOR_PORTS or not isinstance(data.get('enabled'), bool):
+        return jsonify({'error': 'Need a sensor port and enabled true/false'}), 400
+    state = {p: bool(config.get(f'sensor_enabled.{p}', True)) for p in SENSOR_PORTS}
+    state[data['sensor']] = data['enabled']
+    config.set('sensor_enabled', state)
+    config.save_config()
+    return jsonify({'success': True, **state})
 
 @app.route('/api/config/sensor_filter', methods=['GET'])
 def get_sensor_filter_api():

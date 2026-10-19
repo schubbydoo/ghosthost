@@ -3,7 +3,7 @@ Shows
 =====
 A show is a saved set of the settings that change from one event to the next:
 what plays when nothing is assigned, what each sensor port and network trigger
-plays, the sensor cooldown, the timed triggers, and the buttons on the Live tab. Pools, pool schedules, the
+plays (and whether each sensor port is on), the sensor cooldown, the timed triggers, and the buttons on the Live tab. Pools, pool schedules, the
 audio library and its gains and descriptions are shared by every show.
 
 The live config keys stay the single source of truth, so nothing else in the
@@ -33,6 +33,7 @@ def capture(config) -> dict:
         'default_file': config.get('audio.default_file', '') or '',
         'cooldown_period': config.get('sensors.cooldown_period', 30),
         'sensor_pools': {p: assignments.get(p) or '' for p in SENSOR_PORTS},
+        'sensor_enabled': {p: bool(config.get(f'sensor_enabled.{p}', True)) for p in SENSOR_PORTS},
         'network_triggers': {
             str(t.get('id')): {
                 'enabled': t.get('enabled', True),
@@ -111,6 +112,8 @@ def apply(config, snapshot: dict, audio_files) -> list:
             ref = ''
         pools[port] = ref
     config.set('sensor_pools', pools)
+    if 'sensor_enabled' in snapshot:
+        config.set('sensor_enabled', {p: bool(snapshot['sensor_enabled'].get(p, True)) for p in SENSOR_PORTS})
 
     saved = snapshot.get('network_triggers') or {}
     for t in config.get('network_triggers', []) or []:
@@ -184,6 +187,8 @@ def summary(config, snapshot: dict) -> dict:
         'default_file': snapshot.get('default_file') or '',
         'left': ref_label(ports.get('sensor_port_left')),
         'right': ref_label(ports.get('sensor_port_right')),
+        'left_on': (snapshot.get('sensor_enabled') or {}).get('sensor_port_left', True),
+        'right_on': (snapshot.get('sensor_enabled') or {}).get('sensor_port_right', True),
         'cooldown': snapshot.get('cooldown_period'),
         'live': _live_text(snapshot) if 'live_files' in snapshot else None,
         'timed': sorted([f"{t.get('time')} {t.get('name')}" for t in timed if t.get('enabled', True)]),

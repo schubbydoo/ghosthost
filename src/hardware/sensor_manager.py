@@ -108,6 +108,10 @@ class SensorManager:
         """Silence sensor-started performances for a while (sensor test)."""
         self.test_mode_until = time.time() + duration if on else 0
 
+    def is_enabled(self, sensor_name: str) -> bool:
+        """A disabled port is still read (the sensor test shows its pin) but never starts a performance."""
+        return bool(self.config.get(f'sensor_enabled.{sensor_name}', True))
+
     def in_test_mode(self) -> bool:
         return time.time() < self.test_mode_until
 
@@ -117,7 +121,7 @@ class SensorManager:
         for name in ('sensor_port_left', 'sensor_port_right'):
             pin = self.gpio_pins.get(name)
             if pin:
-                levels[name] = {'pin': pin, 'level': int(GPIO.input(pin))}
+                levels[name] = {'pin': pin, 'level': int(GPIO.input(pin)), 'enabled': self.is_enabled(name)}
         return {
             'levels': levels,
             'events': [e for e in list(self.edge_log) if e['seq'] > since],
@@ -129,6 +133,10 @@ class SensorManager:
     def _sensor_triggered(self, sensor_name: str):
         """Handle sensor trigger with debouncing and cooldown logic"""
         current_time = time.time()
+
+        if not self.is_enabled(sensor_name):
+            self.logger.debug(f"Sensor {sensor_name} is disabled, ignoring")
+            return
 
         if self.in_test_mode():
             self.logger.info(f"Sensor {sensor_name} triggered in test mode, not performing")

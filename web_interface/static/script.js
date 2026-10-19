@@ -722,6 +722,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- SENSOR ENABLE (Triggers tab and Live tab share these boxes) ---
+    async function loadSensorEnabled() {
+        let d;
+        try { d = await (await fetch('/api/sensor_enabled')).json(); } catch (e) { return; }
+        document.querySelectorAll('input[data-sensor-enabled]').forEach(c => { c.checked = d[c.dataset.sensorEnabled] !== false; });
+    }
+    document.querySelectorAll('input[data-sensor-enabled]').forEach(c => c.addEventListener('change', async () => {
+        const port = c.dataset.sensorEnabled;
+        const { ok, result } = await postJson('/api/sensor_enabled', { sensor: port, enabled: c.checked });
+        const name = port.endsWith('left') ? 'Left' : 'Right';
+        flash(document.getElementById('sensor-msg'), ok ? name + ' sensor ' + (c.checked ? 'enabled' : 'disabled') : (result.error || 'Save failed'), !ok);
+        flash(document.getElementById('live-show-msg'), ok ? name + ' sensor ' + (c.checked ? 'enabled' : 'disabled') : (result.error || 'Save failed'), !ok);
+        await loadSensorEnabled();
+        loadShows(true);
+        loadLive();
+    }));
+    loadSensorEnabled();
+
     // --- SENSOR FILTER ---
     const filterInput = document.getElementById('sensor-filter-input');
     const filterStatus = document.getElementById('sensor-filter-status');
@@ -1700,7 +1718,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function showSummaryText(sh) {
         const m = sh.summary || {};
-        const parts = ['Default audio: ' + (m.default_file || 'none'), 'Left sensor: ' + m.left, 'Right sensor: ' + m.right];
+        const parts = ['Default audio: ' + (m.default_file || 'none'),
+            'Left sensor: ' + (m.left_on === false ? 'OFF' : m.left), 'Right sensor: ' + (m.right_on === false ? 'OFF' : m.right)];
         if (m.cooldown != null) parts.push('Cooldown: ' + m.cooldown + 's');
         if (m.live != null) parts.push('Live: ' + m.live);
         parts.push((m.timed || []).length ? 'Timed: ' + m.timed.join(', ') : 'No timed triggers');
@@ -1880,7 +1899,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!st.pools.length) empty(pools, 'No pools yet.');
         const sensors = document.getElementById('live-sensors');
         sensors.innerHTML = '';
-        st.sensors.forEach(sn => liveButton(sensors, 'Run ' + sn.label, 'plays: ' + sn.assigned, () => post('/api/live/sensor', { sensor: sn.id })));
+        st.sensors.forEach(sn => liveButton(sensors, 'Run ' + sn.label, (sn.enabled ? 'plays: ' : 'port is off (this button still works). plays: ') + sn.assigned, () => post('/api/live/sensor', { sensor: sn.id })));
     }
     async function loadLiveStatus() {
         const badge = document.getElementById('live-state');
@@ -1982,7 +2001,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const lv = d.levels[name];
                 el.classList.toggle('high', lv.level === 1);
                 el.querySelector('.name').textContent = (labels[name] || name) + ': ' + (lv.level ? 'HIGH' : 'LOW');
-                el.querySelector('.sub').textContent = 'GPIO' + lv.pin;
+                el.querySelector('.sub').textContent = 'GPIO' + lv.pin + (lv.enabled === false ? ' - port disabled, will not start the prop' : '');
             });
             // First poll only sets the baseline; old edges are not news
             if (lastSeq !== null) {
