@@ -17,6 +17,7 @@ import requests
 import uuid
 from datetime import datetime
 from src.core import schedule as sched
+from src.core import timed_triggers as timed
 
 audio_controller = AudioController(config)
 network_manager = NetworkManager()
@@ -571,6 +572,14 @@ def update_greeting_pool(pool_id):
     config.save_config()
     return jsonify({'success': True, 'pool': pool})
 
+def _disable_timed_triggers_using(ref):
+    """A deleted pool or schedule must not leave a timed trigger that would fall back to
+    the default audio at its set time: switch those triggers off instead."""
+    for t in config.get('timed_triggers', []) or []:
+        if str(t.get('pool_id')) == str(ref):
+            t['pool_id'] = ''
+            t['enabled'] = False
+
 @app.route('/api/greeting_pools/<pool_id>', methods=['DELETE'])
 def delete_greeting_pool(pool_id):
     config.load_config()
@@ -591,6 +600,7 @@ def delete_greeting_pool(pool_id):
     for t in config.get('network_triggers', []) or []:
         if str(t.get('pool_id')) == str(pool_id):
             t['pool_id'] = ''
+    _disable_timed_triggers_using(pool_id)
     config.save_config()
     return jsonify({'success': True})
 
@@ -704,6 +714,7 @@ def delete_schedule(schedule_id):
     for t in config.get('network_triggers', []) or []:
         if t.get('pool_id') == ref:
             t['pool_id'] = ''
+    _disable_timed_triggers_using(ref)
     config.save_config()
     return jsonify({'success': True})
 
@@ -775,6 +786,116 @@ def schedule_set_clock():
     if not sched.set_system_clock(epoch):
         return jsonify({'error': 'Could not set the clock (is the sudoers entry for `date` installed?)'}), 500
     return jsonify({'success': True})
+
+# --- TIMED TRIGGERS API ---
+
+def _clean_timed_trigger(data):
+    """Validate a timed trigger body. Returns (fields, error)."""
+    if sched.parse_hhmm(data.get('time')) is None:
+        return None, 'Invalid time (use HH:MM)'
+    audio_file = data.get('audio_file') or ''
+    pool_id = data.get('pool_id') or ''
+    if bool(audio_file) == bool(pool_id):
+        return None, 'Choose what to play'
+    if audio_file and audio_file not in audio_controller.list_audio_files():
+        return None, 'Audio file not found'
+    if pool_id and not _valid_ref(pool_id):
+        return None, 'Invalid pool'
+    active_date = (data.get('active_date') or '').strip()
+    if active_date:
+        try:
+            datetime.strptime(active_date, '%Y-%m-%d')
+        except ValueError:
+            return None, 'Active date must be YYYY-MM-DD'
+    return {'name': (data.get('name') or '').strip() or 'Timed Trigger',
+            'time': data['time'], 'audio_file': audio_file, 'pool_id': pool_id,
+            'active_date': active_date, 'enabled': bool(data.get('enabled', True))}, None
+
+def _timed_target_label(t):
+    if t.get('audio_file'):
+        return (config.get('audio_descriptions', {}) or {}).get(t['audio_file']) or t['audio_file']
+    ref = t.get('pool_id')
+    if sched.is_schedule_ref(ref):
+        sc = sched.get_schedule(config, sched.schedule_id_from_ref(ref))
+        return 'Schedule: ' + sc['name'] if sc else None
+    pool = _find_pool(ref)
+    return 'Pool: ' + pool['name'] if pool else None
+
+@app.route('/api/timed_triggers', methods=['GET'])
+def list_timed_triggers():
+    config.load_config()
+    clock = sched.clock_state(config)
+    state = timed.load_state(config)
+    items = []
+    for t in config.get('timed_triggers', []) or []:
+        status = timed.evaluate(t, clock['now'], state)
+        items.append(dict(t, status=status['status'], status_at=status.get('at'),
+                          in_minutes=status.get('in_minutes'), target=_timed_target_label(t)))
+    # One chronological view of the night: announcements and pool-schedule steps together
+    timeline = []
+    for t in config.get('timed_triggers', []) or []:
+        if t.get('enabled', True) and timed.due_minutes(t) is not None:
+            timeline.append({'at': t['time'], 'kind': 'announce', 'label': t.get('name'),
+                             'detail': _timed_target_label(t), 'date': t.get('active_date') or '',
+                             'sort': timed.due_minutes(t)})
+    for sc in config.get('schedules', []) or []:
+        for st in sc.get('steps') or []:
+            pool = _find_pool(st.get('pool_id'))
+            timeline.append({'at': st.get('at'), 'kind': 'switch', 'label': sc.get('name'),
+                             'detail': pool['name'] if pool else None, 'date': sc.get('active_date') or '',
+                             'sort': sched.step_minutes(st, sc)})
+    timeline.sort(key=lambda e: e['sort'])
+    labels = {'synced': 'Synced', 'manual': 'Set manually', 'test': 'TEST', 'unset': 'Clock not set'}
+    return jsonify({'triggers': items, 'timeline': timeline,
+                    'clock_state': clock['state'], 'clock_label': labels[clock['state']],
+                    'clock_trusted': clock['trusted'], 'time': clock['now'].strftime('%H:%M'),
+                    'wait_limit': timed.WAIT_LIMIT_MINUTES})
+
+@app.route('/api/timed_triggers', methods=['POST'])
+def create_timed_trigger():
+    config.load_config()
+    fields, err = _clean_timed_trigger(request.get_json() or {})
+    if err:
+        return jsonify({'error': err}), 400
+    trigger = dict(fields, id=str(uuid.uuid4()))
+    config.set('timed_triggers', (config.get('timed_triggers', []) or []) + [trigger])
+    config.save_config()
+    return jsonify({'success': True, 'trigger': trigger})
+
+@app.route('/api/timed_triggers/<trigger_id>', methods=['PUT'])
+def update_timed_trigger(trigger_id):
+    config.load_config()
+    trigger = next((t for t in config.get('timed_triggers', []) or []
+                    if str(t.get('id')) == str(trigger_id)), None)
+    if not trigger:
+        return jsonify({'error': 'Timed trigger not found'}), 404
+    fields, err = _clean_timed_trigger(request.get_json() or {})
+    if err:
+        return jsonify({'error': err}), 400
+    trigger.update(fields)
+    config.save_config()
+    return jsonify({'success': True, 'trigger': trigger})
+
+@app.route('/api/timed_triggers/<trigger_id>', methods=['DELETE'])
+def delete_timed_trigger(trigger_id):
+    config.load_config()
+    triggers = config.get('timed_triggers', []) or []
+    if not any(str(t.get('id')) == str(trigger_id) for t in triggers):
+        return jsonify({'error': 'Timed trigger not found'}), 404
+    config.set('timed_triggers', [t for t in triggers if str(t.get('id')) != str(trigger_id)])
+    config.save_config()
+    return jsonify({'success': True})
+
+@app.route('/api/timed_triggers/<trigger_id>/run', methods=['POST'])
+def run_timed_trigger(trigger_id):
+    """Play it now, as a test. Does not mark it done for tonight."""
+    config.load_config()
+    t = next((t for t in config.get('timed_triggers', []) or []
+              if str(t.get('id')) == str(trigger_id)), None)
+    if not t:
+        return jsonify({'success': False, 'message': 'Timed trigger not found'}), 404
+    body = {'audio_file': t['audio_file']} if t.get('audio_file') else {'pool_id': t.get('pool_id')}
+    return jsonify(_controller_post('play', body))
 
 # --- NETWORK TRIGGERS MANAGEMENT API ---
 

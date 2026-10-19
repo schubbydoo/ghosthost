@@ -41,3 +41,5 @@ SoundFiles/.gain_cache/
 
 # Live config: the web UI and the app write to it. Template is config/default_config.example.yaml
 /config/default_config.yaml
+# Which timed triggers already ran tonight (runtime state)
+/config/timed_trigger_state.json

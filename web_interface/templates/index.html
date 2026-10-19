@@ -214,8 +214,8 @@
         <!-- End Audio Management Section -->
         </section>
         <section class="tab-pane" data-tab="pools">
-            <h2 class="pane-title">Pools &amp; Schedules</h2>
-            <p class="pane-sub">Group clips into pools, then optionally release pools on a timetable.</p>
+            <h2 class="pane-title">Pools</h2>
+            <p class="pane-sub">Group clips into pools. Timetables that switch pools through the night are under Triggers.</p>
 <!-- Greeting Pools Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
@@ -232,24 +232,10 @@
                             </div>
         </div>
         <!-- End Greeting Pools Section -->
-<!-- Schedules Section -->
-        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
-            <div class="card-header">Schedules</div>
-            <div class="card-body">
-                <p class="form-text">A schedule switches pools at set local times. Assign it to a sensor port or network trigger like a pool. Make each later pool include the earlier clues so late players still hear them. Times before the night rollover count as after midnight of the same party night.</p>
-                <div class="input-group mb-3">
-                    <input type="text" class="form-control" id="new-schedule-name" placeholder="New schedule name (e.g. Curse Clues)">
-                    <button class="btn btn-primary" id="btn-add-schedule">Add Schedule</button>
-                </div>
-                <div id="schedule-msg" class="form-text mb-2"></div>
-                <div id="schedule-list"><!-- Populated by JS --></div>
-            </div>
-        </div>
-        <!-- End Schedules Section -->
         </section>
         <section class="tab-pane" data-tab="triggers">
             <h2 class="pane-title">Triggers</h2>
-            <p class="pane-sub">What each sensor port and network trigger plays.</p>
+            <p class="pane-sub">What starts the prop and what it plays: sensors, network requests, and the clock.</p>
         <!-- Sensor Assignments Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">Sensor Ports</div>
@@ -293,6 +279,37 @@
             </div>
         </div>
         <!-- End Network Triggers Section -->
+<!-- Timed Triggers Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Timed Triggers</div>
+            <div class="card-body">
+                <p class="form-text">Plays a clip, pool or schedule once at a set time on a party night, such as the costume contest announcement. If the prop is busy at that moment it waits for up to <span id="timed-wait-limit">5</span> minutes, then skips it for the night. It only fires when the clock is set (see Dashboard).</p>
+                <div class="mb-2"><span class="badge bg-secondary" id="timed-clock">--</span> <span class="form-text" id="timed-time"></span></div>
+                <div class="mb-3">
+                    <button class="btn btn-primary" id="btn-add-timed">Add Timed Trigger</button>
+                </div>
+                <div id="timed-msg" class="form-text mb-2"></div>
+                <div id="timed-list"><!-- Populated by JS --></div>
+                <h6 class="mt-3">The night at a glance</h6>
+                <div class="form-text mb-1">Announcements and pool-schedule steps in time order. Times before 06:00 count as after midnight.</div>
+                <div id="timed-timeline"><!-- Populated by JS --></div>
+            </div>
+        </div>
+        <!-- End Timed Triggers Section -->
+        <!-- Schedules Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Pool Schedules</div>
+            <div class="card-body">
+                <p class="form-text">A pool schedule changes which pool a sensor port or network trigger plays as the night goes on. It does not start anything by itself: a visitor or request still has to trigger it. To play something at a set time with nobody triggering it, use a timed trigger above. Make each later pool include the earlier clues so late players still hear them. Times before the night rollover count as after midnight of the same party night.</p>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="new-schedule-name" placeholder="New schedule name (e.g. Curse Clues)">
+                    <button class="btn btn-primary" id="btn-add-schedule">Add Schedule</button>
+                </div>
+                <div id="schedule-msg" class="form-text mb-2"></div>
+                <div id="schedule-list"><!-- Populated by JS --></div>
+            </div>
+        </div>
+        <!-- End Schedules Section -->
         </section>
         <section class="tab-pane" data-tab="system">
             <h2 class="pane-title">System</h2>

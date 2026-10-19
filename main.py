@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 from src.core.config_manager import config
 from src.core.event_handler import EventHandler
 from src.core.trigger_server import TriggerServer
+from src.core.timed_triggers import TimedTriggerRunner
 
 # Global event handler instance for cleanup
 event_handler = None
@@ -81,6 +82,12 @@ def main():
         except Exception as e:
             logger.error(f"Failed to start Trigger Server: {e}")
         
+        # Fires timed triggers (e.g. the costume contest announcement) at their set times
+        try:
+            TimedTriggerRunner(event_handler, config).start()
+        except Exception as e:
+            logger.error(f"Failed to start timed triggers: {e}")
+
         # Flash eyes to indicate system ready, then leave them off until a performance
         event_handler.led_controller.flash_eyes(3, 0.2, end_on=False)
         

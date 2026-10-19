@@ -1347,6 +1347,216 @@ document.addEventListener('DOMContentLoaded', function() {
     loadStatus_schedule();
     setInterval(loadStatus_schedule, 15000);
 
+    // --- TIMED TRIGGERS (Triggers tab) ---
+    const timedList = document.getElementById('timed-list');
+    const timedMsg = document.getElementById('timed-msg');
+    const timedBadges = {};
+
+    function timedStatusText(t) {
+        const mins = n => (n >= 60 ? Math.floor(n / 60) + ' h ' + (n % 60) + ' min' : n + ' min');
+        switch (t.status) {
+            case 'waiting': return ['Waiting, in ' + mins(t.in_minutes), 'bg-info'];
+            case 'due': return ['Due now, waiting for the prop to be free', 'bg-warning text-dark'];
+            case 'played': return ['Played tonight at ' + (t.status_at || ''), 'bg-success'];
+            case 'missed': return ['Skipped for tonight (its time passed)', 'bg-secondary'];
+            case 'failed': return ['Failed: check the audio file', 'bg-danger'];
+            case 'wrong_date': return ['Not tonight (set for ' + t.active_date + ')', 'bg-secondary'];
+            default: return ['Off', 'bg-secondary'];
+        }
+    }
+
+    function renderTimeline(items) {
+        const el = document.getElementById('timed-timeline');
+        if (!el) return;
+        el.innerHTML = '';
+        if (!items.length) { el.innerHTML = '<p class="form-text">Nothing scheduled yet.</p>'; return; }
+        items.forEach(e => {
+            const row = document.createElement('div');
+            row.className = 'form-text';
+            const what = e.kind === 'announce'
+                ? 'plays ' + (e.detail || '?') + ' (' + e.label + ')'
+                : 'sensors switch to pool ' + (e.detail || '?') + ' (' + e.label + ')';
+            row.textContent = e.at + '  ' + what + (e.date ? '  [' + e.date + ' only]' : '');
+            el.appendChild(row);
+        });
+    }
+
+    async function pollTimed() {
+        if (!timedList) return;
+        let data;
+        try { data = await (await fetch('/api/timed_triggers')).json(); } catch (e) { return; }
+        const clock = document.getElementById('timed-clock');
+        clock.textContent = data.clock_label;
+        clock.className = 'badge ' + (BADGE[data.clock_state] || 'bg-secondary');
+        document.getElementById('timed-time').textContent = data.clock_trusted
+            ? 'The prop thinks it is ' + data.time : 'The clock is not set, so timed triggers will not fire.';
+        document.getElementById('timed-wait-limit').textContent = data.wait_limit;
+        (data.triggers || []).forEach(t => {
+            const b = timedBadges[t.id];
+            if (!b) return;
+            const [text, cls] = timedStatusText(t);
+            b.textContent = text;
+            b.className = 'badge ' + cls;
+        });
+        renderTimeline(data.timeline || []);
+        return data;
+    }
+
+    async function loadTimed() {
+        if (!timedList) return;
+        try {
+            const poolsData = await fetchPools();
+            const filesData = await (await fetch('/api/audio/files')).json();
+            const data = await pollTimed();
+            if (!data) return;
+            timedList.innerHTML = '';
+            Object.keys(timedBadges).forEach(k => delete timedBadges[k]);
+            (data.triggers || []).forEach(t => {
+                const box = document.createElement('div');
+                box.className = 'border rounded p-3 mb-3';
+
+                const name = document.createElement('input');
+                name.type = 'text';
+                name.className = 'form-control mb-2';
+                name.value = t.name || '';
+                box.appendChild(name);
+
+                const row = document.createElement('div');
+                row.className = 'row g-2 mb-2';
+                const field = (label, input, cols) => {
+                    const col = document.createElement('div');
+                    col.className = cols;
+                    const l = document.createElement('label');
+                    l.className = 'form-label form-text mb-0';
+                    l.textContent = label;
+                    col.appendChild(l);
+                    col.appendChild(input);
+                    row.appendChild(col);
+                };
+                const time = document.createElement('input');
+                time.type = 'time';
+                time.className = 'form-control form-control-sm';
+                time.value = t.time || '';
+                field('Time', time, 'col-sm-3');
+
+                const target = document.createElement('select');
+                target.className = 'form-select form-select-sm';
+                const gFiles = document.createElement('optgroup');
+                gFiles.label = 'Audio files';
+                (filesData.files || []).forEach(f => {
+                    const o = document.createElement('option');
+                    o.value = 'file:' + f.filename;
+                    o.textContent = f.description ? f.description + ' (' + f.filename + ')' : f.filename;
+                    if (t.audio_file === f.filename) o.selected = true;
+                    gFiles.appendChild(o);
+                });
+                target.appendChild(gFiles);
+                if ((poolsData.pools || []).length) {
+                    const gPools = document.createElement('optgroup');
+                    gPools.label = 'Pools';
+                    poolsData.pools.forEach(p => {
+                        const o = document.createElement('option');
+                        o.value = p.id;
+                        o.textContent = p.name;
+                        if (t.pool_id === p.id) o.selected = true;
+                        gPools.appendChild(o);
+                    });
+                    target.appendChild(gPools);
+                }
+                if ((poolsData.schedules || []).length) {
+                    const gSched = document.createElement('optgroup');
+                    gSched.label = 'Schedules';
+                    poolsData.schedules.forEach(sc => {
+                        const o = document.createElement('option');
+                        o.value = 'schedule:' + sc.id;
+                        o.textContent = 'Schedule: ' + sc.name;
+                        if (t.pool_id === 'schedule:' + sc.id) o.selected = true;
+                        gSched.appendChild(o);
+                    });
+                    target.appendChild(gSched);
+                }
+                field('Plays', target, 'col-sm-6');
+
+                const date = document.createElement('input');
+                date.type = 'date';
+                date.className = 'form-control form-control-sm';
+                date.value = t.active_date || '';
+                field('Only on (blank = every night)', date, 'col-sm-3');
+                box.appendChild(row);
+
+                const enabledWrap = document.createElement('label');
+                enabledWrap.className = 'form-check mb-2';
+                const enabled = document.createElement('input');
+                enabled.type = 'checkbox';
+                enabled.className = 'form-check-input';
+                enabled.checked = t.enabled !== false;
+                enabledWrap.appendChild(enabled);
+                enabledWrap.appendChild(document.createTextNode(' Enabled'));
+                box.appendChild(enabledWrap);
+
+                const badge = document.createElement('span');
+                timedBadges[t.id] = badge;
+                const [text, cls] = timedStatusText(t);
+                badge.textContent = text;
+                badge.className = 'badge ' + cls;
+                box.appendChild(badge);
+
+                const actions = document.createElement('div');
+                actions.className = 'mt-2';
+                const mkBtn = (label, cls2, fn) => {
+                    const b = document.createElement('button');
+                    b.className = 'btn btn-sm ' + cls2 + ' me-2';
+                    b.textContent = label;
+                    b.addEventListener('click', fn);
+                    actions.appendChild(b);
+                };
+                mkBtn('Save', 'btn-success', async () => {
+                    const body = { name: name.value, time: time.value, active_date: date.value, enabled: enabled.checked };
+                    if (target.value.startsWith('file:')) body.audio_file = target.value.slice(5);
+                    else body.pool_id = target.value;
+                    const { ok, result } = await postJson('/api/timed_triggers/' + t.id, body, 'PUT');
+                    if (ok) { showMsg(timedMsg, 'Saved'); loadTimed(); }
+                    else showMsg(timedMsg, result.error || 'Save failed', true);
+                });
+                mkBtn('Run now', 'btn-outline-primary', async () => {
+                    const r = await fetch('/api/timed_triggers/' + t.id + '/run', { method: 'POST' });
+                    let result = {};
+                    try { result = await r.json(); } catch (e) {}
+                    showMsg(timedMsg, result.success ? 'Playing now (a test: it does not count for tonight)' : (result.message || 'Failed'), !result.success);
+                });
+                mkBtn('Delete', 'btn-danger', async () => {
+                    if (!confirm('Delete this timed trigger?')) return;
+                    const r = await fetch('/api/timed_triggers/' + t.id, { method: 'DELETE' });
+                    const result = await r.json();
+                    if (r.ok && result.success) { showMsg(timedMsg, 'Deleted'); loadTimed(); }
+                    else showMsg(timedMsg, result.error || 'Delete failed', true);
+                });
+                box.appendChild(actions);
+                timedList.appendChild(box);
+            });
+            if (!(data.triggers || []).length) timedList.innerHTML = '<p class="form-text">No timed triggers yet.</p>';
+        } catch (e) {
+            console.error('Failed to load timed triggers', e);
+        }
+    }
+
+    const btnAddTimed = document.getElementById('btn-add-timed');
+    if (btnAddTimed) {
+        btnAddTimed.addEventListener('click', async () => {
+            const filesData = await (await fetch('/api/audio/files')).json();
+            const first = (filesData.files || [])[0];
+            if (!first) { showMsg(timedMsg, 'Upload an audio file first', true); return; }
+            const { ok, result } = await postJson('/api/timed_triggers', {
+                name: 'New Timed Trigger', time: '20:00', audio_file: first.filename, enabled: false });
+            if (ok) { showMsg(timedMsg, 'Added, switched off. Set its time and clip, tick Enabled, then Save.'); loadTimed(); }
+            else showMsg(timedMsg, result.error || 'Create failed', true);
+        });
+    }
+    loadTimed();
+    // Status only: re-rendering would wipe a row someone is editing
+    setInterval(() => { if (!document.hidden) pollTimed(); }, 15000);
+    document.querySelectorAll('nav.tabs a[data-tab="triggers"]').forEach(a => a.addEventListener('click', loadTimed));
+
     // --- LIVE TAB ---
     const liveMessages = document.getElementById('live-messages');
     function liveButton(container, title, sub, onPress) {
