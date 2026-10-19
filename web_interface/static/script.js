@@ -787,11 +787,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const res = await fetch('/api/network_triggers');
             const data = await res.json();
-            tableTriggers.innerHTML = '';
             const filesRes = await fetch('/api/audio/files');
             const filesData = await filesRes.json();
             const fileMap = new Map(filesData.files.map(f => [f.filename, f]));
             const pools = await fetchPools();
+            // Clear only now: loads overlap (several cards refresh each other), and clearing
+            // before the awaits let two of them each append a full set of rows.
+            tableTriggers.innerHTML = '';
             if (!(data.triggers || []).length) {
                 tableTriggers.innerHTML = '<p class="form-text">No network triggers yet.</p>';
             }
@@ -840,40 +842,29 @@ document.addEventListener('DOMContentLoaded', function() {
                     if ((tr.action || 'play') === v) o.selected = true;
                     selectAction.appendChild(o);
                 });
-                const selectPool = document.createElement('select');
-                fillPoolOptions(selectPool, pools, tr.pool_id, '(none - use file)');
                 const selectAudio = document.createElement('select');
-                filesData.files.forEach(f => {
-                    const opt = document.createElement('option');
-                    opt.value = f.filename;
-                    opt.textContent = f.filename;
-                    if (f.filename === tr.audio_file) opt.selected = true;
-                    selectAudio.appendChild(opt);
-                });
+                fillAudioOptions(selectAudio, filesData, pools, tr.pool_id || (tr.audio_file ? 'file:' + tr.audio_file : ''), null);
                 const tsNote = document.createElement('div');
                 tsNote.className = 'form-text';
                 const syncState = () => {
                     const isPlay = selectAction.value === 'play';
-                    selectAudio.disabled = !isPlay || !!selectPool.value;
-                    selectPool.disabled = !isPlay;
-                    const info = fileMap.get(selectAudio.value);
+                    selectAudio.disabled = !isPlay;
+                    const info = selectAudio.value.startsWith('file:') ? fileMap.get(selectAudio.value.slice(5)) : null;
                     tsNote.innerHTML = '';
-                    if (!selectAudio.disabled && info && !info.has_timestamps) {
+                    if (isPlay && info && !info.has_timestamps) {
                         const btnGen = document.createElement('button');
                         btnGen.type = 'button';
                         btnGen.className = 'btn btn-sm btn-info';
                         btnGen.textContent = 'Gen Timestamps';
-                        btnGen.addEventListener('click', () => generateTimestamps(selectAudio.value));
+                        btnGen.addEventListener('click', () => generateTimestamps(info.filename));
                         tsNote.appendChild(btnGen);
                     }
                 };
                 selectAction.addEventListener('change', syncState);
-                selectPool.addEventListener('change', syncState);
                 selectAudio.addEventListener('change', syncState);
                 syncState();
                 grid.appendChild(mkField('Action', selectAction));
-                grid.appendChild(mkField('Pool', selectPool));
-                grid.appendChild(mkField('Audio file', selectAudio, tsNote));
+                grid.appendChild(mkField('Audio', selectAudio, tsNote));
                 box.appendChild(grid);
 
                 // Buttons
@@ -889,7 +880,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
                 mkBtn('Save', 'btn-success', async () => {
                     try {
-                        const payload = { name: inputName.value, audio_file: selectAudio.value, pool_id: selectPool.value, action: selectAction.value, enabled: chkEnabled.checked };
+                        const payload = { name: inputName.value, action: selectAction.value, enabled: chkEnabled.checked };
+                        if (selectAction.value === 'play') {
+                            if (selectAudio.value.startsWith('file:')) { payload.audio_file = selectAudio.value.slice(5); payload.pool_id = ''; }
+                            else payload.pool_id = selectAudio.value;
+                        }
                         const resp = await fetch(`/api/network_triggers/${tr.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         const result = await resp.json();
                         if (resp.ok && result.success) {
@@ -1007,6 +1002,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // One dropdown for "what plays": audio files, pools and schedules in labelled groups.
+    // Values: 'file:<name>' for a clip, a pool id, or 'schedule:<id>'; '' for noneLabel.
+    function fillAudioOptions(select, filesData, poolsData, selected, noneLabel) {
+        select.innerHTML = '';
+        if (noneLabel) {
+            const none = document.createElement('option');
+            none.value = '';
+            none.textContent = noneLabel;
+            select.appendChild(none);
+        }
+        const group = (label, items) => {
+            if (!items.length) return;
+            const g = document.createElement('optgroup');
+            g.label = label;
+            items.forEach(([value, text]) => {
+                const o = document.createElement('option');
+                o.value = value;
+                o.textContent = text;
+                if (value === selected) o.selected = true;
+                g.appendChild(o);
+            });
+            select.appendChild(g);
+        };
+        group('Pools (random or in order)', (poolsData.pools || []).map(p =>
+            [p.id, 'Pool: ' + p.name + ' (' + (p.files || []).length + ' clips)']));
+        group('Schedules (pool changes by time)', (poolsData.schedules || []).map(sc =>
+            ['schedule:' + sc.id, 'Schedule: ' + sc.name]));
+        group('Audio files', (filesData.files || []).map(f =>
+            ['file:' + f.filename, f.description ? f.description + ' (' + f.filename + ')' : f.filename]));
+    }
+
     async function loadPools() {
         if (!poolList) return;
         try {
@@ -1103,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Sensor assignment selects
             document.querySelectorAll('select[data-sensor]').forEach(sel => {
                 const sensor = sel.getAttribute('data-sensor');
-                fillPoolOptions(sel, poolsData, (poolsData.sensor_pools || {})[sensor], '(none - default audio)');
+                fillAudioOptions(sel, filesData, poolsData, (poolsData.sensor_pools || {})[sensor], '(default audio)');
                 sel.onchange = async () => {
                     try {
                         const resp = await fetch('/api/sensor_pools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sensor, pool_id: sel.value }) });
@@ -1441,40 +1467,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const target = document.createElement('select');
                 target.className = 'form-select form-select-sm';
-                const gFiles = document.createElement('optgroup');
-                gFiles.label = 'Audio files';
-                (filesData.files || []).forEach(f => {
-                    const o = document.createElement('option');
-                    o.value = 'file:' + f.filename;
-                    o.textContent = f.description ? f.description + ' (' + f.filename + ')' : f.filename;
-                    if (t.audio_file === f.filename) o.selected = true;
-                    gFiles.appendChild(o);
-                });
-                target.appendChild(gFiles);
-                if ((poolsData.pools || []).length) {
-                    const gPools = document.createElement('optgroup');
-                    gPools.label = 'Pools';
-                    poolsData.pools.forEach(p => {
-                        const o = document.createElement('option');
-                        o.value = p.id;
-                        o.textContent = p.name;
-                        if (t.pool_id === p.id) o.selected = true;
-                        gPools.appendChild(o);
-                    });
-                    target.appendChild(gPools);
-                }
-                if ((poolsData.schedules || []).length) {
-                    const gSched = document.createElement('optgroup');
-                    gSched.label = 'Schedules';
-                    poolsData.schedules.forEach(sc => {
-                        const o = document.createElement('option');
-                        o.value = 'schedule:' + sc.id;
-                        o.textContent = 'Schedule: ' + sc.name;
-                        if (t.pool_id === 'schedule:' + sc.id) o.selected = true;
-                        gSched.appendChild(o);
-                    });
-                    target.appendChild(gSched);
-                }
+                fillAudioOptions(target, filesData, poolsData, t.pool_id || (t.audio_file ? 'file:' + t.audio_file : ''), null);
                 field('Plays', target, 'col-sm-6');
 
                 const date = document.createElement('input');

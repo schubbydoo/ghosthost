@@ -57,8 +57,15 @@ class EventHandler:
         # The web UI runs in another process and edits the config file
         self.config.load_config()
         pool_id = self.config.get(f'sensor_pools.{sensor_type.value}')
-        return (self.greeting_picker.pick(pool_id, port=sensor_type.value)
-                or self.config.get('audio.default_file', 'HMGreeting.wav'))
+        default = self.config.get('audio.default_file', 'HMGreeting.wav')
+        if isinstance(pool_id, str) and pool_id.startswith('file:'):
+            # A single clip assigned straight to the port
+            clip = pool_id[len('file:'):]
+            if clip in self.audio_controller.list_audio_files():
+                return clip
+            self.logger.warning(f"Clip '{clip}' assigned to {sensor_type.value} is missing; playing the default")
+            return default
+        return self.greeting_picker.pick(pool_id, port=sensor_type.value) or default
 
     def trigger_network_performance(self, audio_file: Optional[str] = None,
                                     pool_id: Optional[str] = None,

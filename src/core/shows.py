@@ -59,10 +59,13 @@ def get_show(config, show_id) -> Optional[dict]:
     return None
 
 
-def ref_ok(config, ref) -> bool:
-    """A pool id, or 'schedule:<id>' naming an existing schedule."""
+def ref_ok(config, ref, files=None) -> bool:
+    """A pool id, 'schedule:<id>' naming an existing schedule, or (for sensor
+    ports, when `files` is given) 'file:<name>' naming an existing clip."""
     if not ref:
         return True
+    if isinstance(ref, str) and ref.startswith('file:'):
+        return files is not None and ref[len('file:'):] in files
     if sched.is_schedule_ref(ref):
         return sched.get_schedule(config, sched.schedule_id_from_ref(ref)) is not None
     return any(str(p.get('id')) == str(ref) for p in config.get('greeting_pools', []) or [])
@@ -96,7 +99,7 @@ def apply(config, snapshot: dict, audio_files) -> list:
     pools = {}
     for port in SENSOR_PORTS:
         ref = (snapshot.get('sensor_pools') or {}).get(port) or ''
-        if not ref_ok(config, ref):
+        if not ref_ok(config, ref, files):
             warnings.append(f"{port.replace('sensor_port_', '').title()} sensor's pool no longer exists; it plays the default audio")
             ref = ''
         pools[port] = ref
@@ -135,6 +138,8 @@ def summary(config, snapshot: dict) -> dict:
     def ref_label(ref):
         if not ref:
             return 'default audio'
+        if isinstance(ref, str) and ref.startswith('file:'):
+            return ref[len('file:'):]
         if sched.is_schedule_ref(ref):
             sc = sched.get_schedule(config, sched.schedule_id_from_ref(ref))
             return 'Schedule: ' + sc['name'] if sc else '(missing)'

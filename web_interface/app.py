@@ -289,6 +289,8 @@ def live_state():
     live_files = [f for f in (config.get('live_files', []) or []) if f in available]
     assignments = config.get('sensor_pools', {}) or {}
     def ref_label(ref):
+        if isinstance(ref, str) and ref.startswith('file:'):
+            return descriptions.get(ref[5:]) or ref[5:]
         if sched.is_schedule_ref(ref):
             sc = sched.get_schedule(config, sched.schedule_id_from_ref(ref))
             return 'Schedule: ' + sc['name'] if sc else None
@@ -608,6 +610,12 @@ def delete_greeting_pool(pool_id):
     config.save_config()
     return jsonify({'success': True})
 
+def _valid_sensor_ref(ref):
+    """What a sensor port can be given: a pool, a schedule, or one clip as 'file:<name>'."""
+    if isinstance(ref, str) and ref.startswith('file:'):
+        return ref[len('file:'):] in audio_controller.list_audio_files()
+    return _valid_ref(ref)
+
 @app.route('/api/sensor_pools', methods=['POST'])
 def set_sensor_pool():
     """Assign a pool (or '' for none) to a sensor port: {sensor, pool_id}"""
@@ -617,7 +625,7 @@ def set_sensor_pool():
     pool_id = data.get('pool_id') or ''
     if sensor not in SENSOR_PORTS:
         return jsonify({'error': 'Invalid sensor'}), 400
-    if pool_id and not _valid_ref(pool_id):
+    if pool_id and not _valid_sensor_ref(pool_id):
         return jsonify({'error': 'Invalid pool_id'}), 400
     config.set(f'sensor_pools.{sensor}', pool_id)
     config.save_config()
