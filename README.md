@@ -78,10 +78,10 @@ pip install -r requirements.txt
 
 ```bash
 # Copy and edit configuration file
-cp config/default_config.yaml config/config.yaml
+cp config/default_config.example.yaml config/default_config.yaml
 
 # Edit GPIO pins if needed
-nano config/config.yaml
+nano config/default_config.yaml
 ```
 
 ### 3. Audio Setup

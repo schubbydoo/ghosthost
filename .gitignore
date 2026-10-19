@@ -38,3 +38,6 @@ __pycache__/
 
 # Rendered per-file volume boosts (rebuilt on demand)
 SoundFiles/.gain_cache/
+
+# Live config: the web UI and the app write to it. Template is config/default_config.example.yaml
+/config/default_config.yaml
