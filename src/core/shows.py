@@ -3,7 +3,7 @@ Shows
 =====
 A show is a saved set of the settings that change from one event to the next:
 what plays when nothing is assigned, what each sensor port and network trigger
-plays, the sensor cooldown, and the timed triggers. Pools, pool schedules, the
+plays, the sensor cooldown, the timed triggers, and the buttons on the Live tab. Pools, pool schedules, the
 audio library and its gains and descriptions are shared by every show.
 
 The live config keys stay the single source of truth, so nothing else in the
@@ -41,6 +41,7 @@ def capture(config) -> dict:
                 'action': t.get('action') or 'play',
             } for t in config.get('network_triggers', []) or []},
         'timed_triggers': copy.deepcopy(config.get('timed_triggers', []) or []),
+        'live_files': list(config.get('live_files', []) or []),
     }
 
 
@@ -49,7 +50,10 @@ def _same(a, b) -> bool:
 
 
 def is_modified(config, show: dict) -> bool:
-    return not _same(capture(config), show.get('snapshot') or {})
+    saved = show.get('snapshot') or {}
+    now = capture(config)
+    # A show saved before a setting existed does not track it until it is saved again
+    return not _same({k: now.get(k) for k in saved}, saved)
 
 
 def get_show(config, show_id) -> Optional[dict]:
@@ -128,6 +132,12 @@ def apply(config, snapshot: dict, audio_files) -> list:
             t['audio_file'], t['pool_id'], t['enabled'] = '', '', False
     config.set('timed_triggers', timed)
 
+    if 'live_files' in snapshot:
+        live = [f for f in snapshot['live_files'] if f in files]
+        if len(live) != len(snapshot['live_files']):
+            warnings.append('Some Live buttons used clips that no longer exist and were dropped')
+        config.set('live_files', live)
+
     # A hand-advanced pool schedule belongs to the previous show
     config.set('schedule_override', {'step': None, 'set_at': None})
     return warnings
@@ -152,5 +162,6 @@ def summary(config, snapshot: dict) -> dict:
         'left': ref_label(ports.get('sensor_port_left')),
         'right': ref_label(ports.get('sensor_port_right')),
         'cooldown': snapshot.get('cooldown_period'),
+        'live': len(snapshot['live_files']) if 'live_files' in snapshot else None,
         'timed': sorted([f"{t.get('time')} {t.get('name')}" for t in timed if t.get('enabled', True)]),
     }

@@ -1690,6 +1690,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const m = sh.summary || {};
         const parts = ['Default audio: ' + (m.default_file || 'none'), 'Left sensor: ' + m.left, 'Right sensor: ' + m.right];
         if (m.cooldown != null) parts.push('Cooldown: ' + m.cooldown + 's');
+        if (m.live != null) parts.push('Live buttons: ' + m.live);
         parts.push((m.timed || []).length ? 'Timed: ' + m.timed.join(', ') : 'No timed triggers');
         return parts.join(' | ');
     }
