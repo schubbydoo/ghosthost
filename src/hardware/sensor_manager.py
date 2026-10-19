@@ -32,6 +32,7 @@ class SensorManager:
         # Every level change on a sensor pin (not just rising edges), for the
         # web UI's sensor test. A PIR pulse can be shorter than a page poll, so
         # the poll thread records them and the UI asks for what it missed.
+        self._disabled_logged = {}   # pin name -> last time a disabled-port message was logged
         self._rise_time = {}   # pin name -> when it last went HIGH, until it counts or drops
         self.edge_log = deque(maxlen=100)
         self._edge_seq = 0
@@ -135,7 +136,10 @@ class SensorManager:
         current_time = time.time()
 
         if not self.is_enabled(sensor_name):
-            self.logger.debug(f"Sensor {sensor_name} is disabled, ignoring")
+            # Logged at most every 10s per port: a busy PIR would otherwise flood the log
+            if current_time - self._disabled_logged.get(sensor_name, 0) >= 10:
+                self._disabled_logged[sensor_name] = current_time
+                self.logger.info(f"Sensor {sensor_name} detected motion but the port is disabled, ignoring")
             return
 
         if self.in_test_mode():
