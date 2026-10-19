@@ -1690,9 +1690,29 @@ document.addEventListener('DOMContentLoaded', function() {
         const m = sh.summary || {};
         const parts = ['Default audio: ' + (m.default_file || 'none'), 'Left sensor: ' + m.left, 'Right sensor: ' + m.right];
         if (m.cooldown != null) parts.push('Cooldown: ' + m.cooldown + 's');
-        if (m.live != null) parts.push('Live buttons: ' + m.live);
+        if (m.live != null) parts.push('Live: ' + m.live);
         parts.push((m.timed || []).length ? 'Timed: ' + m.timed.join(', ') : 'No timed triggers');
         return parts.join(' | ');
+    }
+
+    const liveSel = document.getElementById('live-show-select');
+    function paintLiveShow(active) {
+        if (!liveSel) return;
+        document.getElementById('live-show-active').textContent = active ? 'Active show: ' + active.name : 'No show saved yet';
+        document.getElementById('live-show-modified').hidden = !(active && active.modified);
+        const prev = liveSel.value;
+        liveSel.innerHTML = '';
+        showsState.shows.forEach(sh => {
+            const o = document.createElement('option');
+            o.value = sh.id;
+            o.textContent = sh.name + (sh.active ? ' (active)' : '');
+            liveSel.appendChild(o);
+        });
+        liveSel.value = (prev && showsState.shows.some(x => x.id === prev)) ? prev : (showsState.active_show || (showsState.shows[0] || {}).id || '');
+        document.getElementById('btn-live-show-switch').disabled = !showsState.shows.length;
+        document.getElementById('btn-live-show-save').disabled = !active || !active.modified;
+        const sel = showsState.shows.find(x => x.id === liveSel.value);
+        document.getElementById('live-show-summary').textContent = sel ? showSummaryText(sel) : '';
     }
 
     function paintShows(keepSelection) {
@@ -1714,6 +1734,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('btn-show-save').disabled = !active;
         const sel = showsState.shows.find(x => x.id === showSelect.value);
         document.getElementById('show-summary').textContent = sel ? showSummaryText(sel) : '';
+        paintLiveShow(active);
     }
 
     async function loadShows(keepSelection) {
@@ -1732,26 +1753,33 @@ document.addEventListener('DOMContentLoaded', function() {
             if (ok) { input.value = ''; showMsg(showMsg_, 'Saved as a new show and made active'); loadShows(); loadTimed(); }
             else showMsg(showMsg_, result.error || 'Could not save', true);
         });
-        document.getElementById('btn-show-save').addEventListener('click', async () => {
+        const saveActive = async (msgEl) => {
             const active = showsState.shows.find(x => x.id === showsState.active_show);
             if (!active) return;
             const { ok, result } = await postJson('/api/shows/' + active.id, { save: true }, 'PUT');
-            if (ok) { showMsg(showMsg_, 'Saved to ' + active.name); loadShows(true); }
-            else showMsg(showMsg_, result.error || 'Could not save', true);
-        });
-        document.getElementById('btn-show-switch').addEventListener('click', async () => {
-            const sh = selected();
+            if (ok) { showMsg(msgEl, 'Saved to ' + active.name); loadShows(true); }
+            else showMsg(msgEl, result.error || 'Could not save', true);
+        };
+        document.getElementById('btn-show-save').addEventListener('click', () => saveActive(showMsg_));
+        const switchTo = async (sh, msgEl) => {
             if (!sh) return;
             const active = showsState.shows.find(x => x.id === showsState.active_show);
             if (active && active.modified && active.id !== sh.id &&
                 !confirm('"' + active.name + '" has changes that are not saved. Switching will discard them. Switch anyway?')) return;
             const { ok, result } = await postJson('/api/shows/' + sh.id + '/activate');
-            if (!ok) { showMsg(showMsg_, result.error || 'Could not switch', true); return; }
+            if (!ok) { showMsg(msgEl, result.error || 'Could not switch', true); return; }
             if ((result.warnings || []).length) {
                 try { sessionStorage.setItem('gh-show-notes', 'Switched to ' + sh.name + ', with notes: ' + result.warnings.join(' ')); } catch (e) {}
             }
             location.reload();   // every card on the tab reads settings the switch just changed
-        });
+        };
+        document.getElementById('btn-show-switch').addEventListener('click', () => switchTo(selected(), showMsg_));
+        if (liveSel) {
+            liveSel.addEventListener('change', () => paintShows(true));
+            document.getElementById('btn-live-show-switch').addEventListener('click',
+                () => switchTo(showsState.shows.find(x => x.id === liveSel.value), document.getElementById('live-show-msg')));
+            document.getElementById('btn-live-show-save').addEventListener('click', () => saveActive(document.getElementById('live-show-msg')));
+        }
         const renameRow = document.getElementById('show-rename-row');
         const renameInput = document.getElementById('show-rename-input');
         const closeRename = () => { renameRow.hidden = true; };
@@ -1776,7 +1804,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         try {
             const notes = sessionStorage.getItem('gh-show-notes');
-            if (notes) { sessionStorage.removeItem('gh-show-notes'); showMsg_.textContent = notes; showMsg_.className = 'form-text text-warning'; }
+            if (notes) {
+                sessionStorage.removeItem('gh-show-notes');
+                [showMsg_, document.getElementById('live-show-msg')].forEach(el => { if (el) { el.textContent = notes; el.className = 'form-text text-warning'; } });
+            }
         } catch (e) {}
         document.getElementById('btn-show-delete').addEventListener('click', async () => {
             const sh = selected();
@@ -1817,10 +1848,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         container.appendChild(b);
     }
+    let liveLayout = null;
     async function loadLive() {
         if (!liveMessages) return;
         let st;
         try { st = await (await fetch('/api/live/state')).json(); } catch (e) { return; }
+        liveLayout = st.layout;
         const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
         const empty = (el, text) => { el.innerHTML = ''; return !!(text && (el.innerHTML = '<p class="form-text">' + text + '</p>')); };
         const liveShow = document.getElementById('live-show');
@@ -1851,6 +1884,53 @@ document.addEventListener('DOMContentLoaded', function() {
             badge.className = 'badge ' + cls;
         } catch (e) {}
     }
+    // --- LIVE BUTTON PICKER (part of the active show) ---
+    const liveLayoutBox = document.getElementById('live-layout');
+    if (liveLayoutBox) {
+        const body = document.getElementById('live-layout-body');
+        const btnEdit = document.getElementById('btn-live-edit');
+        const collect = () => ({
+            files: Array.from(body.querySelectorAll('input[data-kind="file"]:checked')).map(c => c.value),
+            pools: Array.from(body.querySelectorAll('input[data-kind="pool"]:checked')).map(c => c.value),
+            sensors: Array.from(body.querySelectorAll('input[data-kind="sensor"]:checked')).map(c => c.value),
+        });
+        const save = async () => {
+            const { ok, result } = await postJson('/api/live/layout', collect());
+            if (!ok) { flash(document.getElementById('live-show-msg'), result.error || 'Could not save', true); return; }
+            await loadLive();
+            loadShows(true);
+        };
+        const group = (title, items, kind, labelOf, valueOf) => {
+            const h = document.createElement('label');
+            h.textContent = title;
+            h.className = 'mt-2';
+            body.appendChild(h);
+            if (!items.length) { const p = document.createElement('div'); p.className = 'form-text'; p.textContent = 'None yet.'; body.appendChild(p); }
+            items.forEach(it => {
+                const wrap = document.createElement('label');
+                wrap.className = 'form-check';
+                const c = document.createElement('input');
+                c.type = 'checkbox'; c.className = 'form-check-input';
+                c.dataset.kind = kind; c.value = valueOf(it); c.checked = !!it.on;
+                c.addEventListener('change', save);
+                wrap.appendChild(c);
+                wrap.appendChild(document.createTextNode(' ' + labelOf(it)));
+                body.appendChild(wrap);
+            });
+        };
+        const open = () => {
+            if (!liveLayout) return;
+            body.innerHTML = '';
+            group('Messages', liveLayout.files, 'file', f => f.description ? f.description + ' (' + f.filename + ')' : f.filename, f => f.filename);
+            group('Pools and schedules', liveLayout.pools, 'pool', p => (p.kind === 'schedule' ? 'Schedule: ' : 'Pool: ') + p.name, p => p.id);
+            group('Sensor ports', liveLayout.sensors, 'sensor', s => s.label + ' (plays: ' + s.assigned + ')', s => s.id);
+            liveLayoutBox.hidden = false;
+            btnEdit.disabled = true;
+        };
+        btnEdit.addEventListener('click', open);
+        document.getElementById('btn-live-edit-done').addEventListener('click', () => { liveLayoutBox.hidden = true; btnEdit.disabled = false; });
+    }
+
     const btnLiveStop = document.getElementById('btn-live-stop');
     if (btnLiveStop) btnLiveStop.addEventListener('click', async () => {
         await stopProp();

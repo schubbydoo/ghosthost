@@ -41,7 +41,10 @@ def capture(config) -> dict:
                 'action': t.get('action') or 'play',
             } for t in config.get('network_triggers', []) or []},
         'timed_triggers': copy.deepcopy(config.get('timed_triggers', []) or []),
+        # Live tab buttons. None means "show all" (the default until the layout is edited)
         'live_files': list(config.get('live_files', []) or []),
+        'live_pools': config.get('live_pools'),
+        'live_sensors': config.get('live_sensors'),
     }
 
 
@@ -137,10 +140,30 @@ def apply(config, snapshot: dict, audio_files) -> list:
         if len(live) != len(snapshot['live_files']):
             warnings.append('Some Live buttons used clips that no longer exist and were dropped')
         config.set('live_files', live)
+    if 'live_pools' in snapshot:
+        refs = snapshot['live_pools']
+        if refs is not None:
+            kept = [r for r in refs if ref_ok(config, r)]
+            if len(kept) != len(refs):
+                warnings.append('Some Live pool buttons used pools or schedules that no longer exist and were dropped')
+            refs = kept
+        config.set('live_pools', refs)
+    if 'live_sensors' in snapshot:
+        config.set('live_sensors', [p for p in snapshot['live_sensors'] if p in SENSOR_PORTS]
+                   if snapshot['live_sensors'] is not None else None)
 
     # A hand-advanced pool schedule belongs to the previous show
     config.set('schedule_override', {'step': None, 'set_at': None})
     return warnings
+
+
+def _live_text(snapshot: dict) -> str:
+    def count(key, word, plural):
+        v = snapshot.get(key)
+        return f"all {plural}" if v is None else f"{len(v)} {word if len(v) == 1 else plural}"
+    return ', '.join([count('live_files', 'message', 'messages'),
+                      count('live_pools', 'pool', 'pools'),
+                      count('live_sensors', 'sensor port', 'sensor ports')])
 
 
 def summary(config, snapshot: dict) -> dict:
@@ -162,6 +185,6 @@ def summary(config, snapshot: dict) -> dict:
         'left': ref_label(ports.get('sensor_port_left')),
         'right': ref_label(ports.get('sensor_port_right')),
         'cooldown': snapshot.get('cooldown_period'),
-        'live': len(snapshot['live_files']) if 'live_files' in snapshot else None,
+        'live': _live_text(snapshot) if 'live_files' in snapshot else None,
         'timed': sorted([f"{t.get('time')} {t.get('name')}" for t in timed if t.get('enabled', True)]),
     }

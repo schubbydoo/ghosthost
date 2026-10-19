@@ -108,10 +108,33 @@
                 </div>
             </div>
 
+            <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+                <div class="card-header">Show</div>
+                <div class="card-body">
+                    <div class="mb-2"><span class="badge bg-primary" id="live-show-active">--</span>
+                        <span class="badge bg-warning text-dark" id="live-show-modified" hidden>Changed since saved</span></div>
+                    <div class="input-group mb-2">
+                        <select class="form-select" id="live-show-select" aria-label="Show"></select>
+                        <button class="btn btn-primary" id="btn-live-show-switch">Switch to this show</button>
+                    </div>
+                    <div id="live-show-summary" class="form-text mb-2"></div>
+                    <div class="btn-row">
+                        <button class="btn btn-sm btn-success" id="btn-live-show-save">Save changes to the active show</button>
+                        <button class="btn btn-sm btn-outline-primary" id="btn-live-edit">Choose Live buttons</button>
+                    </div>
+                    <div id="live-show-msg" class="form-text mt-2"></div>
+                    <div id="live-layout" class="trigger-box mt-2" hidden>
+                        <p class="form-text mb-2">Tick what this show puts on the Live tab. Each tick applies right away. Press "Save changes to the active show" when you are done so the show keeps it.</p>
+                        <div id="live-layout-body"></div>
+                        <div class="btn-row"><button class="btn btn-sm btn-secondary" id="btn-live-edit-done">Done</button></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card mb-4">
                 <div class="card-header">Messages</div>
                 <div class="card-body">
-                    <p class="form-text mb-3">Plays right away, even during a cooldown. Add a clip here with the "Live button" box on the Media tab.</p>
+                    <p class="form-text mb-3">Plays right away, even during a cooldown. Choose which clips appear with "Choose Live buttons" above.</p>
                     <div class="live-grid" id="live-messages"></div>
                 </div>
             </div>

@@ -297,16 +297,48 @@ def live_state():
         pool = _find_pool(ref) if ref else None
         return pool['name'] if pool else None
     active_show = shows_lib.get_show(config, config.get('active_show'))
+    all_pools = [{'id': p['id'], 'name': p['name'], 'count': len(p.get('files') or [])}
+                 for p in config.get('greeting_pools', []) or []]
+    all_schedules = [{'id': 'schedule:' + sc['id'], 'name': sc['name']}
+                     for sc in config.get('schedules', []) or []]
+    all_sensors = [{'id': p, 'label': 'Left sensor' if p.endswith('left') else 'Right sensor',
+                    'assigned': ref_label(assignments.get(p)) or 'default audio'} for p in SENSOR_PORTS]
+    # None = never edited: show everything. A list = exactly those, in this show.
+    live_pools = config.get('live_pools')
+    live_sensors = config.get('live_sensors')
+    on_pool = lambda i: live_pools is None or i in live_pools
+    on_sensor = lambda i: live_sensors is None or i in live_sensors
     return jsonify({
         'show': active_show.get('name') if active_show else '',
         'messages': [{'filename': f, 'description': descriptions.get(f, '')} for f in live_files],
-        'pools': [{'id': p['id'], 'name': p['name'], 'count': len(p.get('files') or [])}
-                  for p in config.get('greeting_pools', []) or []],
-        'schedules': [{'id': 'schedule:' + sc['id'], 'name': sc['name']}
-                      for sc in config.get('schedules', []) or []],
-        'sensors': [{'id': p, 'label': 'Left sensor' if p.endswith('left') else 'Right sensor',
-                     'assigned': ref_label(assignments.get(p)) or 'default audio'} for p in SENSOR_PORTS],
+        'pools': [p for p in all_pools if on_pool(p['id'])],
+        'schedules': [s for s in all_schedules if on_pool(s['id'])],
+        'sensors': [s for s in all_sensors if on_sensor(s['id'])],
+        # Everything that could be a button, with whether it is one, for the layout editor
+        'layout': {
+            'files': [{'filename': f, 'description': descriptions.get(f, ''), 'on': f in live_files}
+                      for f in available],
+            'pools': [dict(p, on=on_pool(p['id']), kind='pool') for p in all_pools] +
+                     [dict(s, on=on_pool(s['id']), kind='schedule') for s in all_schedules],
+            'sensors': [dict(s, on=on_sensor(s['id'])) for s in all_sensors],
+        },
     })
+
+@app.route('/api/live/layout', methods=['POST'])
+def live_layout():
+    """Which buttons the Live tab shows: {files: [...], pools: [pool ids / schedule refs], sensors: [ports]}.
+    Part of the active show, so saving the show keeps it."""
+    config.load_config()
+    data = request.get_json() or {}
+    available = audio_controller.list_audio_files()
+    files = [f for f in data.get('files') or [] if f in available]
+    pools = [r for r in data.get('pools') or [] if r and _valid_ref(r) and not str(r).startswith('file:')]
+    sensors = [p for p in data.get('sensors') or [] if p in SENSOR_PORTS]
+    config.set('live_files', files)
+    config.set('live_pools', pools)
+    config.set('live_sensors', sensors)
+    config.save_config()
+    return jsonify({'success': True})
 
 @app.route('/api/live/play', methods=['POST'])
 def live_play():
