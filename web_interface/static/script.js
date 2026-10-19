@@ -722,6 +722,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- SENSOR FILTER ---
+    const filterInput = document.getElementById('sensor-filter-input');
+    const filterStatus = document.getElementById('sensor-filter-status');
+    if (filterInput) {
+        fetch('/api/config/sensor_filter').then(r => r.json()).then(d => { filterInput.value = d.min_high_ms; })
+            .catch(() => flash(filterStatus, 'Error loading the filter value.', true));
+        document.getElementById('btn-set-sensor-filter').addEventListener('click', async () => {
+            const { ok, result } = await postJson('/api/config/sensor_filter', { min_high_ms: parseInt(filterInput.value, 10) });
+            flash(filterStatus, ok ? 'Filter set to ' + result.min_high_ms + ' ms' : (result.error || 'Failed to set filter'), !ok);
+        });
+    }
+
     // --- IDLE BEHAVIOR LOGIC ---
     const idleEnabled = document.getElementById('idle-enabled');
     const idleInterval = document.getElementById('idle-interval');

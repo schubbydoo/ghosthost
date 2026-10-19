@@ -517,6 +517,20 @@ def set_cooldown_api():
     config.save_config()
     return jsonify({'success': True, 'cooldown_period': cooldown})
 
+@app.route('/api/config/sensor_filter', methods=['GET'])
+def get_sensor_filter_api():
+    config.load_config()
+    return jsonify({'min_high_ms': round(float(config.get('sensors.min_high_time', 0.25)) * 1000)})
+
+@app.route('/api/config/sensor_filter', methods=['POST'])
+def set_sensor_filter_api():
+    ms = (request.get_json() or {}).get('min_high_ms')
+    if not isinstance(ms, int) or isinstance(ms, bool) or ms < 0 or ms > 3000:
+        return jsonify({'error': 'Must be a whole number of milliseconds, 0-3000'}), 400
+    config.set('sensors.min_high_time', ms / 1000)
+    config.save_config()
+    return jsonify({'success': True, 'min_high_ms': ms})
+
 @app.route('/api/idle_behavior', methods=['GET'])
 def get_idle_behavior_api():
     settings = config.get_idle_behavior_settings()

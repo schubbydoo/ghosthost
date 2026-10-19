@@ -333,6 +333,16 @@
                     </div>
                     <div id="cooldown-status" class="form-text"></div>
                 </div>
+                <!-- Sensor filter -->
+                <div class="mb-3">
+                    <label for="sensor-filter-input" class="form-label">Sensor Filter: ignore signals shorter than (milliseconds)</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="sensor-filter-input" min="0" max="3000" step="50" value="250">
+                        <button class="btn btn-secondary" id="btn-set-sensor-filter">Set Filter</button>
+                    </div>
+                    <div id="sensor-filter-status" class="form-text"></div>
+                    <div class="form-text">A sensor must stay on this long to count. Raise it if the prop triggers by itself (electrical noise or a loose plug looks like very short blips); lower it if real motion is missed. 0 turns the filter off. Applies immediately, no restart. Check the effect with the Sensor test on the Live tab. This is a setting of the prop, not of a show.</div>
+                </div>
             </div>
         </div>
         <!-- End Sensor Assignments Section -->
