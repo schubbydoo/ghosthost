@@ -314,6 +314,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 loadAudioFiles();
                 loadStatus(); // Refresh status to get new default audio
+                loadPools();  // the sensor dropdowns name the default
             } else {
                 alert(data.error || 'Failed to set default audio.');
             }
@@ -1129,7 +1130,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // Sensor assignment selects
             document.querySelectorAll('select[data-sensor]').forEach(sel => {
                 const sensor = sel.getAttribute('data-sensor');
-                fillAudioOptions(sel, filesData, poolsData, (poolsData.sensor_pools || {})[sensor], '(default audio)');
+                const defFile = (filesData.files || []).find(f => f.filename === filesData.default);
+                const defLabel = filesData.default
+                    ? 'Default audio: ' + (defFile && defFile.description ? defFile.description + ' (' + filesData.default + ')' : filesData.default)
+                    : 'Default audio (none set)';
+                fillAudioOptions(sel, filesData, poolsData, (poolsData.sensor_pools || {})[sensor], defLabel);
                 sel.onchange = async () => {
                     try {
                         const resp = await fetch('/api/sensor_pools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sensor, pool_id: sel.value }) });
