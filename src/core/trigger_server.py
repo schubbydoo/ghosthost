@@ -110,6 +110,7 @@ class TriggerServer:
                     'success': True,
                     'kind': 'ghosthost',
                     'performing': bool(eh.performance_active),
+                    'now_playing': eh.current_audio if eh.performance_active else None,
                     'cooling_down': bool(cooling),
                     'cooldown_remaining': round(remaining, 1),
                     'cooldown_period': sm.sensor_settings.get(

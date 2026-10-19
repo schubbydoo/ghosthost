@@ -22,6 +22,12 @@
             <a href="#system" data-tab="system">System</a>
         </nav>
     </header>
+    <!-- Shown on every tab (except Live, which has its own) whenever the prop is speaking -->
+    <div class="nowbar" id="nowbar" hidden>
+        <span class="dot"></span>
+        <span class="now-text" id="nowbar-text">Speaking</span>
+        <button type="button" class="btn btn-danger" id="btn-nowbar-stop">Stop</button>
+    </div>
     <div class="wrap">
 {% if is_ap_mode %}
         <div class="alert alert-warning" role="alert">
@@ -145,9 +151,20 @@
 <!-- Default Audio and Upload Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
-                Default Audio &amp; Upload
+                Volume, Default Audio &amp; Upload
             </div>
             <div class="card-body">
+                <!-- Volume Control -->
+                <div class="mb-3">
+                    <label for="audio-volume" class="form-label">Volume (<span id="current-volume">--</span>)</label>
+                    <div class="input-group">
+                        <input type="range" class="form-range" min="0" max="100" id="audio-volume">
+                        <span class="input-group-text" id="audio-volume-value">--</span>
+                        <button class="btn btn-secondary" id="btn-set-volume">Set Volume</button>
+                    </div>
+                    <div id="volume-status" class="form-text"></div>
+                </div>
+                <hr>
                 <div class="mb-3">
                     <strong>Current Default Audio:</strong> <span id="current-default-audio">Loading...</span>
                 </div>
@@ -158,6 +175,7 @@
                         <!-- Populated by JS -->
                     </select>
                     <button class="btn btn-success mt-2" id="btn-set-default-audio">Set as Default</button>
+                    <div id="default-status" class="form-text"></div>
                 </div>
                 <!-- Upload Audio File -->
                 <div class="mb-3">
@@ -178,6 +196,7 @@
                 <!-- Audio File List -->
                 <div class="mb-3">
                     <h5>Available Audio Files</h5>
+                    <div id="audio-files-msg" class="form-text mb-2"></div>
                     <div class="row g-2 mb-2">
                         <div class="col-sm-6">
                             <select class="form-select form-select-sm" id="audio-sort" aria-label="Sort files">
@@ -207,16 +226,6 @@
                         </li>
                         -->
                     </ul>
-                </div>
-                <!-- Volume Control -->
-                <div class="mb-3">
-                    <div class="mb-2"><strong>Current Volume:</strong> <span id="current-volume">--</span></div>
-                    <label for="audio-volume" class="form-label">Volume</label>
-                    <div class="input-group">
-                        <input type="range" class="form-range" min="0" max="100" id="audio-volume">
-                        <span class="input-group-text" id="audio-volume-value">--</span>
-                        <button class="btn btn-secondary" id="btn-set-volume">Set Volume</button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -261,6 +270,11 @@
                     <button class="btn btn-sm btn-outline-secondary me-2" id="btn-show-rename">Rename</button>
                     <button class="btn btn-sm btn-danger" id="btn-show-delete">Delete</button>
                 </div>
+                <div class="input-group mb-2" id="show-rename-row" hidden>
+                    <input type="text" class="form-control" id="show-rename-input" aria-label="New show name">
+                    <button class="btn btn-success" id="btn-show-rename-save">Save name</button>
+                    <button class="btn btn-secondary" id="btn-show-rename-cancel">Cancel</button>
+                </div>
                 <div class="input-group mb-2">
                     <input type="text" class="form-control" id="new-show-name" placeholder="New show name (e.g. Mill Market)">
                     <button class="btn btn-outline-primary" id="btn-show-new">Save current settings as a new show</button>
@@ -283,6 +297,7 @@
                         <select class="form-select" id="select-pool-sensor_port_right" data-sensor="sensor_port_right"></select>
                     </div>
                 </div>
+                <div id="sensor-msg" class="form-text"></div>
                 <div class="form-text">Each sensor can play one audio file, a pool (a different clip each time), or a schedule (whichever pool is current). A sensor set to "default audio" plays the default file from the Media tab. Network triggers choose what they play below.</div>
 
                 <hr>
@@ -304,9 +319,11 @@
                 Network Triggers
             </div>
             <div class="card-body">
+                <p class="form-text">Another device (a doorbell, phone shortcut, home automation) calls a trigger's URL to start the prop. Use Copy URL on a trigger below.</p>
                 <div class="mb-3">
                     <button class="btn btn-primary" id="btn-add-trigger">Add Network Trigger</button>
                 </div>
+                <div id="trigger-add-form" class="trigger-box" hidden></div>
                 <div id="trigger-status" class="form-text mb-2"></div>
                 <div id="table-triggers"><!-- Populated by JS --></div>
             </div>
@@ -321,6 +338,7 @@
                 <div class="mb-3">
                     <button class="btn btn-primary" id="btn-add-timed">Add Timed Trigger</button>
                 </div>
+                <div id="timed-add-form" class="trigger-box" hidden></div>
                 <div id="timed-msg" class="form-text mb-2"></div>
                 <div id="timed-list"><!-- Populated by JS --></div>
                 <h6 class="mt-3">The night at a glance</h6>
@@ -440,6 +458,7 @@
         <!-- Reboot Section -->
         <div class="text-center" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <button id="btn-reboot" class="btn btn-danger">Reboot System</button>
+            <div id="reboot-msg" class="form-text"></div>
         </div>
         </section>
     </div>

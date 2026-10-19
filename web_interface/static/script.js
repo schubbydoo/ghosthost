@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnSetVolume = document.getElementById('btn-set-volume');
     const currentDefaultAudio = document.getElementById('current-default-audio');
     const currentVolumeSpan = document.getElementById('current-volume');
+    const defaultStatus = document.getElementById('default-status');
+    const volumeStatus = document.getElementById('volume-status');
     const btnAddTrigger = document.getElementById('btn-add-trigger');
     const triggerStatus = document.getElementById('trigger-status');
     const tableTriggers = document.getElementById('table-triggers');
@@ -82,6 +84,56 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (currentVolumeSpan) currentVolumeSpan.textContent = 'Error';
             });
     }
+
+    // --- SHARED UI HELPERS ---
+    // One way to report a result: a status line next to the thing you just touched.
+    function flash(el, message, isError = false) {
+        if (!el) return;
+        el.textContent = message;
+        el.className = 'form-text ' + (isError ? 'text-danger' : 'text-success');
+        clearTimeout(el._flashTimer);
+        el._flashTimer = setTimeout(() => { el.textContent = ''; }, 5000);
+    }
+    const audioFilesMsg = document.getElementById('audio-files-msg');
+
+    // --- NOW PLAYING / STOP ---
+    // Anything the prop speaks (a button here, a sensor, a network request, a timed trigger)
+    // shows the bar at the top of every tab with a Stop button.
+    let nowPlaying = { performing: false, file: null };
+    function syncPlayButtons() {
+        document.querySelectorAll('button[data-play-file]').forEach(b => {
+            const on = nowPlaying.performing && nowPlaying.file === b.dataset.playFile;
+            if (on) b.dataset.playing = '1'; else delete b.dataset.playing;
+            b.textContent = on ? 'Stop' : 'Play on prop';
+            b.classList.toggle('btn-danger', on);
+            b.classList.toggle('btn-info', !on);
+        });
+    }
+    async function stopProp() {
+        try { await fetch('/api/live/stop', { method: 'POST' }); } catch (e) {}
+        await refreshNow();
+    }
+    async function refreshNow() {
+        let h;
+        try { h = await (await fetch('/api/health')).json(); } catch (e) { return null; }
+        nowPlaying = { performing: !!h.performing, file: h.now_playing || null };
+        const bar = document.getElementById('nowbar');
+        if (bar) {
+            bar.hidden = !h.performing;
+            const descs = {};
+            audioFilesData.forEach(f => { descs[f.filename] = f.description; });
+            document.getElementById('nowbar-text').textContent = h.performing
+                ? 'Speaking: ' + (h.now_playing ? (descs[h.now_playing] || h.now_playing) : 'playing now') : '';
+        }
+        syncPlayButtons();
+        return h;
+    }
+    const btnNowbarStop = document.getElementById('btn-nowbar-stop');
+    if (btnNowbarStop) btnNowbarStop.addEventListener('click', stopProp);
+    // Previews in the browser are separate from the prop: stop them when leaving the Media tab
+    document.querySelectorAll('nav.tabs a[data-tab]').forEach(a => a.addEventListener('click', () => {
+        document.querySelectorAll('audio').forEach(p => p.pause());
+    }));
 
     // Fetch and display audio files
     let audioFilesData = [];
@@ -171,6 +223,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 timestampsBadge.textContent = 'Has Timestamps';
                 buttonGroup.appendChild(timestampsBadge);
             }
+            const playBtn = document.createElement('button');
+            playBtn.type = 'button';
+            playBtn.className = 'btn btn-sm btn-info me-1';
+            playBtn.dataset.playFile = filename;
+            playBtn.textContent = 'Play on prop';
+            playBtn.addEventListener('click', async () => {
+                if (playBtn.dataset.playing) { await stopProp(); return; }
+                const r = await postJson('/api/live/play', { audio_file: filename });
+                flash(audioFilesMsg, r.result.success ? 'Playing ' + filename + ' on the prop' : (r.result.message || 'Could not play'), !r.result.success);
+                refreshNow();
+            });
+            buttonGroup.appendChild(playBtn);
             const delBtn = document.createElement('button');
             delBtn.className = 'btn btn-sm btn-danger btn-delete-audio';
             delBtn.textContent = 'Delete';
@@ -236,19 +300,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (e) { gainVal.textContent = 'failed'; }
                 gainSlider.disabled = false;
             });
-            const btnOnProp = document.createElement('button');
-            btnOnProp.type = 'button';
-            btnOnProp.className = 'btn btn-sm btn-info';
-            btnOnProp.textContent = 'Play on prop';
-            btnOnProp.addEventListener('click', async () => {
-                const resp = await fetch('/api/live/play', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio_file: filename }) });
-                const result = await resp.json();
-                gainVal.textContent = result.success ? 'playing on the prop' : (result.message || 'failed');
-            });
             gainRow.appendChild(gainLbl);
             gainRow.appendChild(gainSlider);
             gainRow.appendChild(gainVal);
-            gainRow.appendChild(btnOnProp);
             li.appendChild(gainRow);
 
             const player = document.createElement('audio');
@@ -263,6 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
             li.appendChild(player);
             audioFileList.appendChild(li);
         });
+        syncPlayButtons();
     }
     if (audioSort) audioSort.addEventListener('change', renderAudioList);
     if (audioPoolFilter) audioPoolFilter.addEventListener('change', renderAudioList);
@@ -303,7 +358,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set default audio file
     btnSetDefaultAudio.addEventListener('click', function() {
         const filename = selectDefaultAudio.value;
-        if (!filename) { alert("Please select an audio file."); return; }
+        if (!filename) { flash(defaultStatus, 'Please select an audio file.', true); return; }
         fetch('/api/audio/default', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -315,8 +370,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 loadAudioFiles();
                 loadStatus(); // Refresh status to get new default audio
                 loadPools();  // the sensor dropdowns name the default
+                flash(defaultStatus, 'Default audio set to ' + filename);
             } else {
-                alert(data.error || 'Failed to set default audio.');
+                flash(defaultStatus, data.error || 'Failed to set default audio.', true);
             }
         });
     });
@@ -362,12 +418,13 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
+                flash(audioFilesMsg, 'Deleted ' + filename);
                 loadAudioFiles();
             } else {
-                alert(data.error || 'Failed to delete file.');
+                flash(audioFilesMsg, data.error || 'Failed to delete file.', true);
             }
         })
-        .catch(err => alert(`Error deleting file: ${err}`))
+        .catch(err => flash(audioFilesMsg, `Error deleting file: ${err}`, true))
     }
 
     // Fetch and display volume
@@ -400,10 +457,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 loadVolume(); // Reload to confirm
                 if (currentVolumeSpan) currentVolumeSpan.textContent = data.volume + '%';
+                flash(volumeStatus, 'Volume set to ' + data.volume + '%');
             } else {
-                alert(data.error || 'Failed to set volume');
+                flash(volumeStatus, data.error || 'Failed to set volume', true);
             }
-        });
+        })
+        .catch(() => flash(volumeStatus, 'Request error.', true));
     });
 
     // --- WIFI MANAGEMENT LOGIC ---
@@ -614,15 +673,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        alert(data.message || 'System is rebooting. This page will become unresponsive.');
                         // Disable UI as system goes down
                         document.body.innerHTML = '<div class="container mt-5 alert alert-info"><h1>Rebooting...</h1><p>Please wait for the system to restart. You may need to manually refresh this page after a few minutes.</p></div>';
                     } else {
-                        alert(data.message || 'Reboot failed.');
+                        flash(document.getElementById('reboot-msg'), data.message || 'Reboot failed.', true);
                     }
                 })
                 .catch(err => {
-                    alert('Failed to send reboot command: ' + err);
+                    flash(document.getElementById('reboot-msg'), 'Failed to send reboot command: ' + err, true);
                 });
             }
         });
@@ -655,14 +713,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    if (cooldownStatus) cooldownStatus.textContent = 'Cooldown updated!';
+                    flash(cooldownStatus, 'Cooldown updated');
                 } else {
-                    if (cooldownStatus) cooldownStatus.textContent = data.error || 'Failed to update cooldown.';
+                    flash(cooldownStatus, data.error || 'Failed to update cooldown.', true);
                 }
             })
-            .catch(() => {
-                if (cooldownStatus) cooldownStatus.textContent = 'Request error.';
-            });
+            .catch(() => flash(cooldownStatus, 'Request error.', true));
         });
     }
 
@@ -699,14 +755,12 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    if (idleStatus) idleStatus.textContent = 'Idle behavior settings updated!';
+                    flash(idleStatus, 'Idle behavior saved');
                 } else {
-                    if (idleStatus) idleStatus.textContent = data.error || 'Failed to update idle behavior.';
+                    flash(idleStatus, data.error || 'Failed to update idle behavior.', true);
                 }
             })
-            .catch(() => {
-                if (idleStatus) idleStatus.textContent = 'Request error.';
-            });
+            .catch(() => flash(idleStatus, 'Request error.', true));
         });
     }
 
@@ -721,7 +775,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Call loadIdleBehavior on page load
     loadIdleBehavior();
 
-    function generateTimestamps(filename) {
+    function generateTimestamps(filename, statusEl) {
         console.log("generateTimestamps called for:", filename);
         if (!filename) return;
 
@@ -735,7 +789,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Use 'uploadStatus' for messages, assuming it exists and is suitable
-        const statusElement = document.getElementById('upload-status'); 
+        const statusElement = statusEl || audioFilesMsg;
 
         fetch(`/api/audio/generate_timestamps/${encodeURIComponent(filename)}`, { 
             method: 'POST'
@@ -750,15 +804,13 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             if (data.success) {
-                if (statusElement) displayMessage(statusElement, `Timestamps generated for ${filename}. Output: ${data.output || ''}`, true);
-                else alert(`Timestamps generated for ${filename}.`);
+                flash(statusElement, `Timestamps generated for ${filename}`);
                 loadAudioFiles(); // Refresh list to show new timestamp status
                 loadStatus(); // Also refresh general status
             } else {
                 // data.error should be primary, data.details for more specifics
                 const errorMessage = `Error: ${data.error || 'Failed to generate timestamps.'} ${data.details ? 'Details: ' + data.details : ''}`;
-                if (statusElement) displayMessage(statusElement, errorMessage, false);
-                else alert(errorMessage);
+                flash(statusElement, errorMessage, true);
                 console.error("Timestamp generation failed:", data);
             }
         })
@@ -770,8 +822,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 errorMessage += ` ${error.message}`;
             }
             
-            if (statusElement) displayMessage(statusElement, errorMessage, false);
-            else alert(errorMessage);
+            flash(statusElement, errorMessage, true);
             console.error("Timestamp generation request failed:", error);
         })
         .finally(() => {
@@ -857,7 +908,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         btnGen.type = 'button';
                         btnGen.className = 'btn btn-sm btn-info';
                         btnGen.textContent = 'Gen Timestamps';
-                        btnGen.addEventListener('click', () => generateTimestamps(info.filename));
+                        btnGen.addEventListener('click', () => generateTimestamps(info.filename, triggerStatus));
                         tsNote.appendChild(btnGen);
                     }
                 };
@@ -901,7 +952,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     try {
                         const resp = await fetch(`/api/network_triggers/${tr.id}/fire`, { method: 'POST' });
                         const result = await resp.json();
-                        if (resp.ok && result.success) displayTriggerMessage('Trigger fired');
+                        if (resp.ok && result.success) { displayTriggerMessage('Trigger fired'); refreshNow(); }
                         else displayTriggerMessage(result.message || result.error || 'Busy/failed', true);
                     } catch (e) { displayTriggerMessage('Fire failed', true); }
                 });
@@ -934,24 +985,70 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Shared by the Add forms: label + control in the same grid the saved cards use
+    function formField(label, control) {
+        const col = document.createElement('div');
+        const l = document.createElement('label');
+        l.textContent = label;
+        col.appendChild(l);
+        col.appendChild(control);
+        return col;
+    }
+    function formButtons(createLabel, onCreate, onCancel) {
+        const row = document.createElement('div');
+        row.className = 'btn-row';
+        const create = document.createElement('button');
+        create.type = 'button'; create.className = 'btn btn-sm btn-success'; create.textContent = createLabel;
+        create.addEventListener('click', onCreate);
+        const cancel = document.createElement('button');
+        cancel.type = 'button'; cancel.className = 'btn btn-sm btn-secondary'; cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', onCancel);
+        row.appendChild(create); row.appendChild(cancel);
+        return row;
+    }
+
     if (btnAddTrigger) {
+        const form = document.getElementById('trigger-add-form');
+        const close = () => { form.hidden = true; form.innerHTML = ''; btnAddTrigger.disabled = false; };
         btnAddTrigger.addEventListener('click', async () => {
+            let filesData, poolsData;
             try {
-                const filesRes = await fetch('/api/audio/files');
-                const filesData = await filesRes.json();
-                const defaultAudio = (filesData.files && filesData.files[0] && filesData.files[0].filename) || null;
-                if (!defaultAudio) { displayTriggerMessage('No audio files available. Upload first.', true); return; }
-                const name = prompt('Enter trigger name:', 'New Trigger');
-                if (name === null) return;
-                const audio = prompt('Enter audio filename to assign (exact name):', defaultAudio);
-                if (audio === null) return;
-                const secret = prompt('Optional secret (leave blank for none):', '');
-                const payload = { name, audio_file: audio, secret: secret || '', enabled: true };
-                const resp = await fetch('/api/network_triggers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                const result = await resp.json();
-                if (resp.ok && result.success) { displayTriggerMessage('Trigger created'); loadTriggers(); }
+                filesData = await (await fetch('/api/audio/files')).json();
+                poolsData = await fetchPools();
+            } catch (e) { displayTriggerMessage('Could not load audio files', true); return; }
+            if (!(filesData.files || []).length) { displayTriggerMessage('No audio files available. Upload one on the Media tab first.', true); return; }
+            btnAddTrigger.disabled = true;
+            form.innerHTML = '';
+            const name = document.createElement('input');
+            name.type = 'text'; name.value = 'New Trigger'; name.setAttribute('aria-label', 'Trigger name');
+            const action = document.createElement('select');
+            [['play', 'Play audio'], ['advance', 'Advance Step'], ['auto', 'Return to Automatic']].forEach(([v, t]) => {
+                const o = document.createElement('option'); o.value = v; o.textContent = t; action.appendChild(o);
+            });
+            const audio = document.createElement('select');
+            fillAudioOptions(audio, filesData, poolsData, 'file:' + filesData.files[0].filename, null);
+            const secret = document.createElement('input');
+            secret.type = 'text'; secret.placeholder = 'Optional';
+            action.addEventListener('change', () => { audio.disabled = action.value !== 'play'; });
+            const grid = document.createElement('div');
+            grid.className = 'trigger-grid';
+            grid.appendChild(formField('Name', name));
+            grid.appendChild(formField('Action', action));
+            grid.appendChild(formField('Audio', audio));
+            grid.appendChild(formField('Secret (callers must send it)', secret));
+            form.appendChild(grid);
+            form.appendChild(formButtons('Create trigger', async () => {
+                const payload = { name: name.value.trim() || 'New Trigger', action: action.value, secret: secret.value, enabled: true };
+                if (action.value === 'play') {
+                    if (audio.value.startsWith('file:')) payload.audio_file = audio.value.slice(5);
+                    else { payload.pool_id = audio.value; payload.audio_file = filesData.files[0].filename; }
+                }
+                const { ok, result } = await postJson('/api/network_triggers', payload);
+                if (ok) { close(); displayTriggerMessage('Trigger created'); loadTriggers(); }
                 else displayTriggerMessage(result.error || 'Create failed', true);
-            } catch (e) { displayTriggerMessage('Create failed', true); }
+            }, close));
+            form.hidden = false;
+            name.focus(); name.select();
         });
     }
 
@@ -1113,7 +1210,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnDelete.className = 'btn btn-sm btn-danger';
                 btnDelete.textContent = 'Delete Pool';
                 btnDelete.addEventListener('click', async () => {
-                    if (!confirm('Delete this pool? Sensors and triggers using it will fall back to their file/default.')) return;
+                    if (!confirm('Delete this pool? Sensor ports and network triggers using it will go back to the default audio (or their own file), and timed triggers using it are switched off.')) return;
                     try {
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'DELETE' });
                         const result = await resp.json();
@@ -1139,9 +1236,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     try {
                         const resp = await fetch('/api/sensor_pools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sensor, pool_id: sel.value }) });
                         const result = await resp.json();
-                        if (resp.ok && result.success) displayPoolMessage('Sensor assignment saved');
-                        else displayPoolMessage(result.error || 'Save failed', true);
-                    } catch (e) { displayPoolMessage('Save failed', true); }
+                        if (resp.ok && result.success) flash(document.getElementById('sensor-msg'), 'Saved');
+                        else flash(document.getElementById('sensor-msg'), result.error || 'Save failed', true);
+                    } catch (e) { flash(document.getElementById('sensor-msg'), 'Save failed', true); }
                 };
             });
         } catch (e) {
@@ -1285,7 +1382,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnDelete.className = 'btn btn-sm btn-danger';
                 btnDelete.textContent = 'Delete Schedule';
                 btnDelete.addEventListener('click', async () => {
-                    if (!confirm('Delete this schedule? Ports and triggers using it fall back to default audio.')) return;
+                    if (!confirm('Delete this schedule? Sensor ports and network triggers using it will go back to the default audio, and timed triggers using it are switched off.')) return;
                     const resp = await fetch(`/api/schedules/${sc.id}`, { method: 'DELETE' });
                     const result = await resp.json();
                     if (resp.ok && result.success) { showMsg(scheduleMsg, 'Schedule deleted'); loadSchedules(); loadPools(); loadTriggers(); loadStatus_schedule(); }
@@ -1521,6 +1618,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     let result = {};
                     try { result = await r.json(); } catch (e) {}
                     showMsg(timedMsg, result.success ? 'Playing now (a test: it does not count for tonight)' : (result.message || 'Failed'), !result.success);
+                    refreshNow();
                 });
                 mkBtn('Delete', 'btn-danger', async () => {
                     if (!confirm('Delete this timed trigger?')) return;
@@ -1540,14 +1638,42 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const btnAddTimed = document.getElementById('btn-add-timed');
     if (btnAddTimed) {
+        const form = document.getElementById('timed-add-form');
+        const close = () => { form.hidden = true; form.innerHTML = ''; btnAddTimed.disabled = false; };
         btnAddTimed.addEventListener('click', async () => {
-            const filesData = await (await fetch('/api/audio/files')).json();
-            const first = (filesData.files || [])[0];
-            if (!first) { showMsg(timedMsg, 'Upload an audio file first', true); return; }
-            const { ok, result } = await postJson('/api/timed_triggers', {
-                name: 'New Timed Trigger', time: '20:00', audio_file: first.filename, enabled: false });
-            if (ok) { showMsg(timedMsg, 'Added, switched off. Set its time and clip, tick Enabled, then Save.'); loadTimed(); }
-            else showMsg(timedMsg, result.error || 'Create failed', true);
+            let filesData, poolsData;
+            try {
+                filesData = await (await fetch('/api/audio/files')).json();
+                poolsData = await fetchPools();
+            } catch (e) { showMsg(timedMsg, 'Could not load audio files', true); return; }
+            if (!(filesData.files || []).length) { showMsg(timedMsg, 'Upload an audio file on the Media tab first', true); return; }
+            btnAddTimed.disabled = true;
+            form.innerHTML = '';
+            const name = document.createElement('input');
+            name.type = 'text'; name.value = 'New Timed Trigger'; name.setAttribute('aria-label', 'Name');
+            const time = document.createElement('input');
+            time.type = 'time'; time.value = '20:00';
+            const target = document.createElement('select');
+            fillAudioOptions(target, filesData, poolsData, 'file:' + filesData.files[0].filename, null);
+            const date = document.createElement('input');
+            date.type = 'date';
+            const grid = document.createElement('div');
+            grid.className = 'trigger-grid';
+            grid.appendChild(formField('Name', name));
+            grid.appendChild(formField('Time', time));
+            grid.appendChild(formField('Plays', target));
+            grid.appendChild(formField('Only on (blank = every night)', date));
+            form.appendChild(grid);
+            form.appendChild(formButtons('Create timed trigger', async () => {
+                const body = { name: name.value.trim() || 'Timed Trigger', time: time.value, active_date: date.value, enabled: true };
+                if (target.value.startsWith('file:')) body.audio_file = target.value.slice(5);
+                else body.pool_id = target.value;
+                const { ok, result } = await postJson('/api/timed_triggers', body);
+                if (ok) { close(); showMsg(timedMsg, 'Timed trigger created'); loadTimed(); loadShows(true); }
+                else showMsg(timedMsg, result.error || 'Create failed', true);
+            }, close));
+            form.hidden = false;
+            name.focus(); name.select();
         });
     }
     loadTimed();
@@ -1620,18 +1746,37 @@ document.addEventListener('DOMContentLoaded', function() {
                 !confirm('"' + active.name + '" has changes that are not saved. Switching will discard them. Switch anyway?')) return;
             const { ok, result } = await postJson('/api/shows/' + sh.id + '/activate');
             if (!ok) { showMsg(showMsg_, result.error || 'Could not switch', true); return; }
-            if ((result.warnings || []).length) alert('Switched to ' + sh.name + ', with notes:\n\n' + result.warnings.join('\n'));
+            if ((result.warnings || []).length) {
+                try { sessionStorage.setItem('gh-show-notes', 'Switched to ' + sh.name + ', with notes: ' + result.warnings.join(' ')); } catch (e) {}
+            }
             location.reload();   // every card on the tab reads settings the switch just changed
         });
-        document.getElementById('btn-show-rename').addEventListener('click', async () => {
+        const renameRow = document.getElementById('show-rename-row');
+        const renameInput = document.getElementById('show-rename-input');
+        const closeRename = () => { renameRow.hidden = true; };
+        document.getElementById('btn-show-rename').addEventListener('click', () => {
             const sh = selected();
             if (!sh) return;
-            const name = prompt('New name for this show:', sh.name);
-            if (name === null) return;
-            const { ok, result } = await postJson('/api/shows/' + sh.id, { name }, 'PUT');
-            if (ok) { showMsg(showMsg_, 'Renamed'); loadShows(true); }
+            renameInput.value = sh.name;
+            renameRow.hidden = false;
+            renameInput.focus(); renameInput.select();
+        });
+        document.getElementById('btn-show-rename-cancel').addEventListener('click', closeRename);
+        renameInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter') document.getElementById('btn-show-rename-save').click();
+            if (e.key === 'Escape') closeRename();
+        });
+        document.getElementById('btn-show-rename-save').addEventListener('click', async () => {
+            const sh = selected();
+            if (!sh) return;
+            const { ok, result } = await postJson('/api/shows/' + sh.id, { name: renameInput.value }, 'PUT');
+            if (ok) { closeRename(); showMsg(showMsg_, 'Renamed'); loadShows(true); loadLive(); }
             else showMsg(showMsg_, result.error || 'Could not rename', true);
         });
+        try {
+            const notes = sessionStorage.getItem('gh-show-notes');
+            if (notes) { sessionStorage.removeItem('gh-show-notes'); showMsg_.textContent = notes; showMsg_.className = 'form-text text-warning'; }
+        } catch (e) {}
         document.getElementById('btn-show-delete').addEventListener('click', async () => {
             const sh = selected();
             if (!sh) return;
@@ -1695,7 +1840,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const badge = document.getElementById('live-state');
         if (!badge) return;
         try {
-            const h = await (await fetch('/api/health')).json();
+            const h = await refreshNow();
+            if (!h) return;
             let text = 'Idle', cls = 'bg-primary';
             if (!h.controller_up) { text = 'Prop not responding'; cls = 'bg-danger'; }
             else if (h.performing) { text = 'Speaking'; cls = 'bg-info'; }
@@ -1706,13 +1852,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     const btnLiveStop = document.getElementById('btn-live-stop');
     if (btnLiveStop) btnLiveStop.addEventListener('click', async () => {
-        await fetch('/api/live/stop', { method: 'POST' });
+        await stopProp();
         loadLiveStatus();
     });
     loadLive();
     loadLiveStatus();
     // Poll only while the tab is visible: this page sits open on a phone all evening
-    setInterval(() => { if (!document.hidden) loadLiveStatus(); }, 3000);
+    setInterval(() => { if (!document.hidden) loadLiveStatus(); }, 2000);
     document.querySelectorAll('nav.tabs a[data-tab="live"]').forEach(a => a.addEventListener('click', loadLive));
 
     // --- SENSOR TEST (Live tab) ---

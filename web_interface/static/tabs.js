@@ -7,6 +7,7 @@
     if (!panes.some(p => p.dataset.tab === name)) name = (typeof IS_AP_MODE !== 'undefined' && IS_AP_MODE) ? 'system' : 'dashboard';
     panes.forEach(p => p.classList.toggle('active', p.dataset.tab === name));
     tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.body.dataset.tab = name;
     window.scrollTo(0, 0);
   }
   tabs.forEach(t => t.addEventListener('click', e => {

@@ -17,6 +17,7 @@ class EventHandler:
         
         # State tracking
         self.performance_active = False
+        self.current_audio = None   # file being performed, for the web UI's Stop bar
         
         # Initialize hardware controllers
         self.motor_controller = MotorController(config)
@@ -118,6 +119,7 @@ class EventHandler:
                 'network'
             )
 
+            self.current_audio = selected_audio
             self.logger.info(f"Network-triggered performance started - Duration: {audio_duration:.1f}s")
             return { 'success': True, 'message': 'Performance started' }
 
@@ -197,6 +199,7 @@ class EventHandler:
                 sensor_type.value
             )
             
+            self.current_audio = audio_file
             self.logger.info(f"Performance started - Duration: {audio_duration:.1f}s")
             
         except Exception as e:
@@ -217,6 +220,7 @@ class EventHandler:
     
     def _cleanup_performance(self):
         """Clean up after performance"""
+        self.current_audio = None
         try:
             # Stop all motors
             self.motor_controller.stop_all_motors()

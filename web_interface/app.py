@@ -372,6 +372,7 @@ def get_health():
         port = config.get('network_trigger.port', 5055)
         r = requests.get(f'http://127.0.0.1:{port}/api/status', timeout=1.5).json()
         h.update(controller_up=True, performing=bool(r.get('performing')),
+                 now_playing=r.get('now_playing'),
                  cooling_down=bool(r.get('cooling_down')),
                  cooldown_remaining=r.get('cooldown_remaining', 0))
     except Exception:
