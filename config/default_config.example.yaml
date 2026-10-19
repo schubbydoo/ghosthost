@@ -50,6 +50,7 @@ network_triggers:
   secret: ''
 sensors:
   cooldown_period: 15
+  min_high_time: 0.25   # seconds a sensor pin must stay HIGH to count as motion; filters noise blips
   debounce_time: 0.2
 web:
   debug: false

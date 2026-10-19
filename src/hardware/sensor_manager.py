@@ -32,6 +32,7 @@ class SensorManager:
         # Every level change on a sensor pin (not just rising edges), for the
         # web UI's sensor test. A PIR pulse can be shorter than a page poll, so
         # the poll thread records them and the UI asks for what it missed.
+        self._rise_time = {}   # pin name -> when it last went HIGH, until it counts or drops
         self.edge_log = deque(maxlen=100)
         self._edge_seq = 0
         # While set (a time.time() deadline) sensor edges are logged but do not
@@ -88,8 +89,17 @@ class SensorManager:
                     self._edge_seq += 1
                     self.edge_log.append({'seq': self._edge_seq, 'time': time.time(),
                                           'sensor': pin_name, 'level': int(state)})
-                # Detect rising edge (LOW to HIGH)
+                # A rising edge only counts once the pin has stayed HIGH for min_high_time.
+                # A PIR holds its output for seconds, so the 20-150ms blips seen on a
+                # marginal connection (or when a plug is inserted) are not motion.
                 if last_state == 0 and state == 1:
+                    self._rise_time[pin_name] = time.time()
+                elif state == 0 and pin_name in self._rise_time:
+                    del self._rise_time[pin_name]
+                    self.logger.debug(f"Sensor {pin_name} pulse too short, ignored")
+                if state == 1 and pin_name in self._rise_time and \
+                        time.time() - self._rise_time[pin_name] >= self.config.get('sensors.min_high_time', 0.25):
+                    del self._rise_time[pin_name]
                     self._sensor_triggered(pin_name)
                 self._last_pin_state[pin_name] = state
             time.sleep(poll_interval)
