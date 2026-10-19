@@ -160,7 +160,8 @@ class SensorManager:
     
     def start_cooldown(self):
         """Start the cooldown period after audio playback"""
-        cooldown_duration = self.sensor_settings.get('cooldown_period', 30)
+        # Read live: switching shows changes the cooldown without a restart
+        cooldown_duration = self.config.get('sensors.cooldown_period', 30)
         self.cooldown_end_time = time.time() + cooldown_duration
         self.in_cooldown = True
         

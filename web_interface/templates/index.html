@@ -95,7 +95,8 @@
                 <div class="card-body">
                     <div class="live-statusline">
                         <div><span class="badge bg-primary" id="live-state">--</span>
-                            <span class="form-text" id="live-last"></span></div>
+                            <span class="form-text" id="live-last"></span>
+                            <span class="form-text" id="live-show"></span></div>
                         <button class="bigbtn live-stop" id="btn-live-stop"><span>Stop</span></button>
                     </div>
                 </div>
@@ -141,17 +142,39 @@
         <section class="tab-pane" data-tab="media">
             <h2 class="pane-title">Media</h2>
             <p class="pane-sub">Audio files: upload, listen, describe, and generate mouth-sync timestamps.</p>
+<!-- Default Audio and Upload Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">
+                Default Audio &amp; Upload
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Current Default Audio:</strong> <span id="current-default-audio">Loading...</span>
+                </div>
+                <!-- Set Default Audio -->
+                <div class="mb-3">
+                    <label for="select-default-audio" class="form-label">Set Default Audio</label>
+                    <select class="form-select" id="select-default-audio">
+                        <!-- Populated by JS -->
+                    </select>
+                    <button class="btn btn-success mt-2" id="btn-set-default-audio">Set as Default</button>
+                </div>
+                <!-- Upload Audio File -->
+                <div class="mb-3">
+                    <label for="audio-upload" class="form-label">Upload New Audio File (e.g., .wav, .mp3)</label>
+                    <input class="form-control" type="file" id="audio-upload" accept=".wav,.mp3,.m4a,.ogg,.flac">
+                    <button class="btn btn-primary mt-2" id="btn-upload-audio">Upload</button>
+                    <div id="upload-status" class="form-text"></div>
+                </div>
+            </div>
+        </div>
+        <!-- End Default Audio and Upload Section -->
 <!-- Audio Management Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">
-                Audio Management
+                Audio Files
             </div>
             <div class="card-body">
-                <!-- Current Default and Volume Display -->
-                <div class="mb-3">
-                    <strong>Current Default Audio:</strong> <span id="current-default-audio">Loading...</span><br>
-                    <strong>Current Volume:</strong> <span id="current-volume">--</span>
-                </div>
                 <!-- Audio File List -->
                 <div class="mb-3">
                     <h5>Available Audio Files</h5>
@@ -185,23 +208,9 @@
                         -->
                     </ul>
                 </div>
-                <!-- Set Default Audio -->
-                <div class="mb-3">
-                    <label for="select-default-audio" class="form-label">Set Default Audio</label>
-                    <select class="form-select" id="select-default-audio">
-                        <!-- Populated by JS -->
-                    </select>
-                    <button class="btn btn-success mt-2" id="btn-set-default-audio">Set as Default</button>
-                </div>
-                <!-- Upload Audio File -->
-                <div class="mb-3">
-                    <label for="audio-upload" class="form-label">Upload New Audio File (e.g., .wav, .mp3)</label>
-                    <input class="form-control" type="file" id="audio-upload" accept=".wav,.mp3,.m4a,.ogg,.flac">
-                    <button class="btn btn-primary mt-2" id="btn-upload-audio">Upload</button>
-                    <div id="upload-status" class="form-text"></div>
-                </div>
                 <!-- Volume Control -->
                 <div class="mb-3">
+                    <div class="mb-2"><strong>Current Volume:</strong> <span id="current-volume">--</span></div>
                     <label for="audio-volume" class="form-label">Volume</label>
                     <div class="input-group">
                         <input type="range" class="form-range" min="0" max="100" id="audio-volume">
@@ -236,6 +245,30 @@
         <section class="tab-pane" data-tab="triggers">
             <h2 class="pane-title">Triggers</h2>
             <p class="pane-sub">What starts the prop and what it plays: sensors, network requests, and the clock.</p>
+        <!-- Show Section -->
+        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
+            <div class="card-header">Show</div>
+            <div class="card-body">
+                <p class="form-text">A show saves everything on this tab for one event: the default audio, what each sensor port and network trigger plays, the sensor cooldown, and the timed triggers. Pools, pool schedules and your audio files are shared by every show. Set this tab up for an event, save it as a show, then switch between shows on the day.</p>
+                <div class="mb-2"><span class="badge bg-primary" id="show-active">--</span> <span class="badge bg-warning text-dark" id="show-modified" style="display:none;">Changed since saved</span></div>
+                <div class="input-group mb-2">
+                    <select class="form-select" id="show-select" aria-label="Show"></select>
+                    <button class="btn btn-primary" id="btn-show-switch">Switch to this show</button>
+                </div>
+                <div id="show-summary" class="form-text mb-2"></div>
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-success me-2" id="btn-show-save">Save changes to the active show</button>
+                    <button class="btn btn-sm btn-outline-secondary me-2" id="btn-show-rename">Rename</button>
+                    <button class="btn btn-sm btn-danger" id="btn-show-delete">Delete</button>
+                </div>
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control" id="new-show-name" placeholder="New show name (e.g. Mill Market)">
+                    <button class="btn btn-outline-primary" id="btn-show-new">Save current settings as a new show</button>
+                </div>
+                <div id="show-msg" class="form-text"></div>
+            </div>
+        </div>
+        <!-- End Show Section -->
         <!-- Sensor Assignments Section -->
         <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
             <div class="card-header">Sensor Ports</div>

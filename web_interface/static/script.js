@@ -1557,6 +1557,98 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(() => { if (!document.hidden) pollTimed(); }, 15000);
     document.querySelectorAll('nav.tabs a[data-tab="triggers"]').forEach(a => a.addEventListener('click', loadTimed));
 
+    // --- SHOWS (Triggers tab) ---
+    const showSelect = document.getElementById('show-select');
+    const showMsg_ = document.getElementById('show-msg');
+    let showsState = { shows: [], active_show: '' };
+
+    function showSummaryText(sh) {
+        const m = sh.summary || {};
+        const parts = ['Default audio: ' + (m.default_file || 'none'), 'Left sensor: ' + m.left, 'Right sensor: ' + m.right];
+        if (m.cooldown != null) parts.push('Cooldown: ' + m.cooldown + 's');
+        parts.push((m.timed || []).length ? 'Timed: ' + m.timed.join(', ') : 'No timed triggers');
+        return parts.join(' | ');
+    }
+
+    function paintShows(keepSelection) {
+        const active = showsState.shows.find(x => x.id === showsState.active_show);
+        const badge = document.getElementById('show-active');
+        badge.textContent = active ? 'Active show: ' + active.name : 'No show saved yet (these settings are not saved as a show)';
+        document.getElementById('show-modified').style.display = active && active.modified ? '' : 'none';
+        const prev = keepSelection ? showSelect.value : '';
+        showSelect.innerHTML = '';
+        showsState.shows.forEach(sh => {
+            const o = document.createElement('option');
+            o.value = sh.id;
+            o.textContent = sh.name + (sh.active ? ' (active)' : '');
+            showSelect.appendChild(o);
+        });
+        showSelect.value = (prev && showsState.shows.some(x => x.id === prev)) ? prev : (showsState.active_show || (showsState.shows[0] || {}).id || '');
+        const hasShows = showsState.shows.length > 0;
+        ['btn-show-switch', 'btn-show-rename', 'btn-show-delete'].forEach(id => { document.getElementById(id).disabled = !hasShows; });
+        document.getElementById('btn-show-save').disabled = !active;
+        const sel = showsState.shows.find(x => x.id === showSelect.value);
+        document.getElementById('show-summary').textContent = sel ? showSummaryText(sel) : '';
+    }
+
+    async function loadShows(keepSelection) {
+        if (!showSelect) return;
+        try { showsState = await (await fetch('/api/shows')).json(); } catch (e) { return; }
+        paintShows(keepSelection);
+    }
+
+    if (showSelect) {
+        showSelect.addEventListener('change', () => paintShows(true));
+        const selected = () => showsState.shows.find(x => x.id === showSelect.value);
+
+        document.getElementById('btn-show-new').addEventListener('click', async () => {
+            const input = document.getElementById('new-show-name');
+            const { ok, result } = await postJson('/api/shows', { name: input.value });
+            if (ok) { input.value = ''; showMsg(showMsg_, 'Saved as a new show and made active'); loadShows(); loadTimed(); }
+            else showMsg(showMsg_, result.error || 'Could not save', true);
+        });
+        document.getElementById('btn-show-save').addEventListener('click', async () => {
+            const active = showsState.shows.find(x => x.id === showsState.active_show);
+            if (!active) return;
+            const { ok, result } = await postJson('/api/shows/' + active.id, { save: true }, 'PUT');
+            if (ok) { showMsg(showMsg_, 'Saved to ' + active.name); loadShows(true); }
+            else showMsg(showMsg_, result.error || 'Could not save', true);
+        });
+        document.getElementById('btn-show-switch').addEventListener('click', async () => {
+            const sh = selected();
+            if (!sh) return;
+            const active = showsState.shows.find(x => x.id === showsState.active_show);
+            if (active && active.modified && active.id !== sh.id &&
+                !confirm('"' + active.name + '" has changes that are not saved. Switching will discard them. Switch anyway?')) return;
+            const { ok, result } = await postJson('/api/shows/' + sh.id + '/activate');
+            if (!ok) { showMsg(showMsg_, result.error || 'Could not switch', true); return; }
+            if ((result.warnings || []).length) alert('Switched to ' + sh.name + ', with notes:\n\n' + result.warnings.join('\n'));
+            location.reload();   // every card on the tab reads settings the switch just changed
+        });
+        document.getElementById('btn-show-rename').addEventListener('click', async () => {
+            const sh = selected();
+            if (!sh) return;
+            const name = prompt('New name for this show:', sh.name);
+            if (name === null) return;
+            const { ok, result } = await postJson('/api/shows/' + sh.id, { name }, 'PUT');
+            if (ok) { showMsg(showMsg_, 'Renamed'); loadShows(true); }
+            else showMsg(showMsg_, result.error || 'Could not rename', true);
+        });
+        document.getElementById('btn-show-delete').addEventListener('click', async () => {
+            const sh = selected();
+            if (!sh) return;
+            if (!confirm('Delete the show "' + sh.name + '"? The current settings stay as they are.')) return;
+            const resp = await fetch('/api/shows/' + sh.id, { method: 'DELETE' });
+            const result = await resp.json();
+            if (resp.ok && result.success) { showMsg(showMsg_, 'Deleted'); loadShows(); }
+            else showMsg(showMsg_, result.error || 'Could not delete', true);
+        });
+        loadShows();
+        // "Changed since saved" follows edits made in the cards below
+        setInterval(() => { if (!document.hidden) loadShows(true); }, 10000);
+        document.querySelectorAll('nav.tabs a[data-tab="triggers"]').forEach(a => a.addEventListener('click', () => loadShows(true)));
+    }
+
     // --- LIVE TAB ---
     const liveMessages = document.getElementById('live-messages');
     function liveButton(container, title, sub, onPress) {
@@ -1587,6 +1679,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try { st = await (await fetch('/api/live/state')).json(); } catch (e) { return; }
         const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
         const empty = (el, text) => { el.innerHTML = ''; return !!(text && (el.innerHTML = '<p class="form-text">' + text + '</p>')); };
+        const liveShow = document.getElementById('live-show');
+        if (liveShow) liveShow.textContent = st.show ? 'Show: ' + st.show : '';
         liveMessages.innerHTML = '';
         if (!st.messages.length) empty(liveMessages, 'No messages yet. Tick "Live button" on a file in the Media tab.');
         st.messages.forEach(m => liveButton(liveMessages, m.description || m.filename, m.description ? m.filename : '', () => post('/api/live/play', { audio_file: m.filename })));

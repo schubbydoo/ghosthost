@@ -15,9 +15,11 @@ from src.network_management.network_manager import NetworkManager
 from src.network_management.ap_mode_manager import AP_SSID as DEFAULT_AP_SETUP_SSID
 import requests
 import uuid
+import copy
 from datetime import datetime
 from src.core import schedule as sched
 from src.core import timed_triggers as timed
+from src.core import shows as shows_lib
 
 audio_controller = AudioController(config)
 network_manager = NetworkManager()
@@ -292,7 +294,9 @@ def live_state():
             return 'Schedule: ' + sc['name'] if sc else None
         pool = _find_pool(ref) if ref else None
         return pool['name'] if pool else None
+    active_show = shows_lib.get_show(config, config.get('active_show'))
     return jsonify({
+        'show': active_show.get('name') if active_show else '',
         'messages': [{'filename': f, 'description': descriptions.get(f, '')} for f in live_files],
         'pools': [{'id': p['id'], 'name': p['name'], 'count': len(p.get('files') or [])}
                   for p in config.get('greeting_pools', []) or []],
@@ -896,6 +900,87 @@ def run_timed_trigger(trigger_id):
         return jsonify({'success': False, 'message': 'Timed trigger not found'}), 404
     body = {'audio_file': t['audio_file']} if t.get('audio_file') else {'pool_id': t.get('pool_id')}
     return jsonify(_controller_post('play', body))
+
+# --- SHOWS API ---
+
+def _show_json(show, active_id):
+    is_active = str(show.get('id')) == str(active_id)
+    return {'id': show['id'], 'name': show.get('name'), 'active': is_active,
+            'modified': shows_lib.is_modified(config, show) if is_active else False,
+            'summary': shows_lib.summary(config, show.get('snapshot') or {})}
+
+@app.route('/api/shows', methods=['GET'])
+def list_shows():
+    config.load_config()
+    active = config.get('active_show')
+    if active and not shows_lib.get_show(config, active):
+        active = None
+    return jsonify({'shows': [_show_json(s, active) for s in config.get('shows', []) or []],
+                    'active_show': active or ''})
+
+@app.route('/api/shows', methods=['POST'])
+def create_show():
+    """Save the current settings as a new show, and make it the active one."""
+    config.load_config()
+    name = ((request.get_json() or {}).get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Give the show a name'}), 400
+    if any((s.get('name') or '').lower() == name.lower() for s in config.get('shows', []) or []):
+        return jsonify({'error': 'A show with that name already exists'}), 400
+    live = shows_lib.capture(config)
+    show = {'id': str(uuid.uuid4()), 'name': name, 'snapshot': live}
+    # The new show gets its own timed trigger ids; the live ones keep theirs. Switch the
+    # live config to the new copy so the two stay identical and show as unmodified.
+    show['snapshot'] = shows_lib.fresh_ids(live)
+    config.set('shows', (config.get('shows', []) or []) + [show])
+    config.set('timed_triggers', copy.deepcopy(show['snapshot']['timed_triggers']))
+    config.set('active_show', show['id'])
+    config.save_config()
+    return jsonify({'success': True, 'show': _show_json(show, show['id'])})
+
+@app.route('/api/shows/<show_id>', methods=['PUT'])
+def update_show(show_id):
+    """Rename, or save the current settings into this show ({save: true})."""
+    config.load_config()
+    show = shows_lib.get_show(config, show_id)
+    if not show:
+        return jsonify({'error': 'Show not found'}), 404
+    data = request.get_json() or {}
+    if data.get('name') is not None:
+        name = data['name'].strip()
+        if not name:
+            return jsonify({'error': 'Give the show a name'}), 400
+        if any(s is not show and (s.get('name') or '').lower() == name.lower() for s in config.get('shows', []) or []):
+            return jsonify({'error': 'A show with that name already exists'}), 400
+        show['name'] = name
+    if data.get('save'):
+        if str(config.get('active_show')) != str(show_id):
+            return jsonify({'error': 'Switch to this show before saving changes to it'}), 400
+        show['snapshot'] = shows_lib.capture(config)
+    config.save_config()
+    return jsonify({'success': True})
+
+@app.route('/api/shows/<show_id>/activate', methods=['POST'])
+def activate_show(show_id):
+    config.load_config()
+    show = shows_lib.get_show(config, show_id)
+    if not show:
+        return jsonify({'error': 'Show not found'}), 404
+    warnings = shows_lib.apply(config, show.get('snapshot') or {}, audio_controller.list_audio_files())
+    config.set('active_show', show['id'])
+    config.save_config()
+    return jsonify({'success': True, 'warnings': warnings})
+
+@app.route('/api/shows/<show_id>', methods=['DELETE'])
+def delete_show(show_id):
+    config.load_config()
+    if not shows_lib.get_show(config, show_id):
+        return jsonify({'error': 'Show not found'}), 404
+    config.set('shows', [s for s in config.get('shows', []) or [] if str(s.get('id')) != str(show_id)])
+    if str(config.get('active_show')) == str(show_id):
+        config.set('active_show', '')   # the live settings stay as they are, just unsaved
+    config.save_config()
+    return jsonify({'success': True})
 
 # --- NETWORK TRIGGERS MANAGEMENT API ---
 
