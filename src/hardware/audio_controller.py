@@ -223,30 +223,40 @@ class AudioController:
             self.logger.error(f"Error listing audio files: {e}")
             return []
     
-    def upload_audio_file(self, file_data: bytes, filename: str) -> bool:
-        """Upload new audio file"""
+    def upload_audio_file(self, file_data: bytes, filename: str) -> Optional[str]:
+        """Store an uploaded audio file as a real .wav (aplay and the duration
+        check only understand WAV). Returns the saved filename, or None on failure."""
         try:
             soundfiles_dir = self.audio_settings.get('soundfiles_dir', 'SoundFiles')
             audio_dir = Path(soundfiles_dir)
             audio_dir.mkdir(exist_ok=True)
-            
-            # Ensure filename has .wav extension
-            if not filename.lower().endswith('.wav'):
-                filename += '.wav'
-            
-            audio_path = audio_dir / filename
-            
-            # Write file
-            with open(audio_path, 'wb') as f:
-                f.write(file_data)
-            
-            self.logger.info(f"Audio file uploaded: {filename}")
-            return True
-            
+
+            audio_path = audio_dir / (Path(filename).stem + '.wav')
+
+            if file_data[:4] == b'RIFF' and file_data[8:12] == b'WAVE':
+                audio_path.write_bytes(file_data)
+            else:
+                # mp3, m4a, ogg, flac...: convert
+                src = audio_dir / f'.upload-{os.getpid()}-{Path(filename).name}'
+                tmp = audio_path.with_name('.converting-' + audio_path.name)
+                try:
+                    src.write_bytes(file_data)
+                    subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(src),
+                                    '-c:a', 'pcm_s16le', '-f', 'wav', str(tmp)],
+                                   check=True, capture_output=True, timeout=120)
+                    tmp.replace(audio_path)
+                finally:
+                    src.unlink(missing_ok=True)
+                    tmp.unlink(missing_ok=True)
+
+            self.logger.info(f"Audio file uploaded: {audio_path.name}")
+            return audio_path.name
+
         except Exception as e:
-            self.logger.error(f"Error uploading audio file {filename}: {e}")
-            return False
-    
+            detail = getattr(e, 'stderr', b'') or b''
+            self.logger.error(f"Error uploading audio file {filename}: {e} {detail.decode(errors='replace')[:200]}")
+            return None
+
     def delete_audio_file(self, filename: str) -> bool:
         """Delete audio file"""
         try:

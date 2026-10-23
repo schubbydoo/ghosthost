@@ -150,10 +150,10 @@ def upload_audio_file_api():
 
     file_data = file.read()
     
-    success = audio_controller.upload_audio_file(file_data, filename)
-    if success:
-        return jsonify({'success': True, 'filename': filename})
-    return jsonify({'error': 'Upload failed'}), 500
+    saved = audio_controller.upload_audio_file(file_data, filename)
+    if saved:
+        return jsonify({'success': True, 'filename': saved})
+    return jsonify({'error': 'Upload failed (not a readable audio file?)'}), 500
 
 @app.route('/api/audio/delete/<path:filename>', methods=['DELETE'])
 def delete_audio_file_api(filename):
