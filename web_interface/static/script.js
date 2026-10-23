@@ -377,38 +377,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Upload audio file
-    btnUploadAudio.addEventListener('click', function() {
-        if (!audioUploadInput || !audioUploadInput.files[0]) {
+    // Upload audio files (one or several), one request each so a bad file doesn't sink the rest
+    btnUploadAudio.addEventListener('click', async function() {
+        const files = audioUploadInput ? Array.from(audioUploadInput.files) : [];
+        if (!files.length) {
             displayMessage(uploadStatus, 'No file selected.', false);
             return;
         }
-        const file = audioUploadInput.files[0];
-        const formData = new FormData();
-        formData.append('file', file);
-        
         btnUploadAudio.disabled = true;
-        btnUploadAudio.textContent = 'Uploading...';
-        displayMessage(uploadStatus, 'Uploading file...', true);
-
-        fetch('/api/audio/upload', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                displayMessage(uploadStatus, `Upload successful: ${data.filename}`, true);
-                loadAudioFiles();
-                audioUploadInput.value = ''; // Clear file input
-            } else {
-                displayMessage(uploadStatus, data.error || 'Upload failed.', false);
+        const done = [], failed = [];
+        for (let i = 0; i < files.length; i++) {
+            btnUploadAudio.textContent = `Uploading ${i + 1}/${files.length}...`;
+            displayMessage(uploadStatus, `Uploading ${files[i].name}...`, true);
+            const formData = new FormData();
+            formData.append('file', files[i]);
+            try {
+                const res = await fetch('/api/audio/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) done.push(data.filename);
+                else failed.push(`${files[i].name} (${data.error || 'failed'})`);
+            } catch (err) {
+                failed.push(`${files[i].name} (${err})`);
             }
-        })
-        .catch(err => {
-             displayMessage(uploadStatus, `Upload request error: ${err}`, false);
-        })
-        .finally(() => {
-            btnUploadAudio.disabled = false;
-            btnUploadAudio.textContent = 'Upload';
-        });
+        }
+        if (done.length) {
+            loadAudioFiles();
+            audioUploadInput.value = ''; // Clear file input
+        }
+        const ok = `Uploaded ${done.length} file${done.length === 1 ? '' : 's'}`;
+        displayMessage(uploadStatus, failed.length ? `${ok}. Failed: ${failed.join(', ')}` : `${ok}: ${done.join(', ')}`, !failed.length);
+        btnUploadAudio.disabled = false;
+        btnUploadAudio.textContent = 'Upload';
     });
 
     // Delete audio file
