@@ -5,6 +5,7 @@ Ghost Host Main Application
 Main entry point for the Ghost Host animatronic system.
 """
 
+import os
 import sys
 import signal
 import logging
@@ -21,6 +22,29 @@ from src.core.timed_triggers import TimedTriggerRunner
 
 # Global event handler instance for cleanup
 event_handler = None
+
+# Shared network-robustness package (optional: the prop runs without it)
+NETGUARD_DIR = os.environ.get("NETGUARD_DIR", os.path.join(os.path.expanduser("~"), "netguard"))
+
+def start_netguard():
+    """Watch the WiFi link and self-heal. The prop works offline, so no internet host is
+    required: only a lost link or an unreachable router counts as a problem, and a missing
+    internet connection gets a long grace before any network switch."""
+    try:
+        sys.path.append(NETGUARD_DIR)
+        import netguard
+        monitor = netguard.Monitor(
+            hosts=[], optional_hosts=["api.elevenlabs.io"],
+            state_dir=str(Path(__file__).parent / "logs"),   # where the System tab reads it
+            hotspot_profiles=("GhostHostAP",), use_sudo=True, cooldown=60,
+            grace={netguard.NO_LINK: 30, netguard.NO_GATEWAY: 30, netguard.NO_INTERNET: 600},
+            driver_recovery=netguard.DriverRecovery(iface="wlan0", driver="brcmfmac", reboot=True, gateway_dead_after=180))
+        monitor.start()
+        logging.getLogger(__name__).info(f"netguard {netguard.__version__} monitoring the network")
+        return monitor
+    except Exception as e:
+        logging.getLogger(__name__).error(f"netguard not started: {e}")
+        return None
 
 def setup_logging():
     """Setup logging configuration"""
@@ -70,6 +94,8 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
+        start_netguard()
+
         # Initialize event handler (this sets up all hardware)
         logger.info("Initializing hardware systems...")
         event_handler = EventHandler(config)

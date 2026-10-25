@@ -45,13 +45,19 @@ propkit_cfg = propkit.PropConfig(
 )
 propkit_flask.install(app, propkit_cfg)   # /system, /api/system, /api/netguard, restart/reboot, WiFi routes, /static/propkit/
 
+try:
+    sys.path.append(os.path.join(os.path.expanduser("~"), "netguard"))
+    import netguard.web as netguard_web
+except ImportError:
+    netguard_web = None
+
 @app.route('/')
 def home():
     is_ap_mode, ap_ssid = network_manager.get_ap_mode_status()
     if is_ap_mode:
         # In setup mode only WiFi matters, and that lives on the shared System page
         return redirect(url_for('propkit.system'))
-    return render_template('index.html', is_ap_mode=is_ap_mode, ap_ssid=ap_ssid or DEFAULT_AP_SETUP_SSID)
+    return render_template('index.html', netguard_banner=netguard_web.BANNER_HTML if netguard_web else '', is_ap_mode=is_ap_mode, ap_ssid=ap_ssid or DEFAULT_AP_SETUP_SSID)
 
 # --- AUDIO MANAGEMENT API ---
 
