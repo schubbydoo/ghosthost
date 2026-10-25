@@ -43,3 +43,5 @@ SoundFiles/.gain_cache/
 /config/default_config.yaml
 # Which timed triggers already ran tonight (runtime state)
 /config/timed_trigger_state.json
+# Runtime log written by startup.sh
+startup.log
