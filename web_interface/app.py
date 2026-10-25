@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, redirect, url_for
 import socket
 import os
 import subprocess
@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.core.config_manager import config
 from src.hardware.audio_controller import AudioController
 from src.network_management.network_manager import NetworkManager
-from src.network_management.ap_mode_manager import AP_SSID as DEFAULT_AP_SETUP_SSID
+from src.network_management.ap_mode_manager import AP_SSID as DEFAULT_AP_SETUP_SSID, AP_CONNECTION_NAME
 import requests
 import uuid
 import copy
@@ -30,9 +30,27 @@ app = Flask(__name__)
 if not app.debug:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Shared web-UI foundation: System tab (health, network, software, restart/reboot) and WiFi management
+sys.path.append(os.environ.get("PROPKIT_DIR", os.path.join(os.path.expanduser("~"), "propkit")))
+import propkit
+from propkit import flask_app as propkit_flask
+_BASE_DIR = str(Path(__file__).resolve().parent.parent)
+propkit_cfg = propkit.PropConfig(
+    name="Ghost Host", brand=("GHOST", "HOST"),
+    tabs=[("dashboard", "/#dashboard", "Dashboard"), ("live", "/#live", "Live"), ("media", "/#media", "Media"),
+          ("pools", "/#pools", "Pools"), ("triggers", "/#triggers", "Triggers"), ("idle", "/#idle", "Idle"),
+          ("system", "/system", "System")],
+    service_name="ghosthost.service", base_dir=_BASE_DIR, state_dir=os.path.join(_BASE_DIR, "logs"),
+    hotspot_profile=AP_CONNECTION_NAME,
+)
+propkit_flask.install(app, propkit_cfg)   # /system, /api/system, /api/netguard, restart/reboot, WiFi routes, /static/propkit/
+
 @app.route('/')
 def home():
     is_ap_mode, ap_ssid = network_manager.get_ap_mode_status()
+    if is_ap_mode:
+        # In setup mode only WiFi matters, and that lives on the shared System page
+        return redirect(url_for('propkit.system'))
     return render_template('index.html', is_ap_mode=is_ap_mode, ap_ssid=ap_ssid or DEFAULT_AP_SETUP_SSID)
 
 # --- AUDIO MANAGEMENT API ---
@@ -438,70 +456,6 @@ def get_health():
                                   if not (audio_controller.get_audio_info(f) or {}).get('has_timestamps'))
     h['default_audio'] = config.get('audio.default_file', '')
     return jsonify(h)
-
-# --- WIFI/NETWORK MANAGEMENT API (using NetworkManager) ---
-
-@app.route('/api/networks', methods=['GET'])
-def list_networks_api():
-    available = network_manager.scan_wifi_networks()
-    saved = network_manager.get_saved_networks()
-    return jsonify({'available_networks': available, 'saved_networks': saved})
-
-@app.route('/api/networks/connect', methods=['POST'])
-def connect_network_api():
-    data = request.get_json()
-    ssid_or_uuid = data.get('ssid_or_uuid')
-    password = data.get('password')
-    if not ssid_or_uuid:
-        return jsonify({'success': False, 'message': 'SSID or UUID required'}), 400
-    
-    success, msg = network_manager.connect_network(ssid_or_uuid, password)
-    return jsonify({'success': success, 'message': msg})
-
-@app.route('/api/networks/save', methods=['POST'])
-def save_network_api():
-    data = request.get_json()
-    ssid = data.get('ssid')
-    password = data.get('password')
-    autoconnect = data.get('autoconnect', True)
-    if not ssid or not password:
-        return jsonify({'success': False, 'message': 'SSID and password required'}), 400
-    
-    success, msg = network_manager.save_network(ssid, password, autoconnect)
-    return jsonify({'success': success, 'message': msg})
-
-@app.route('/api/networks/delete', methods=['POST'])
-def delete_network_api():
-    data = request.get_json()
-    name_or_uuid = data.get('name_or_uuid')
-    if not name_or_uuid:
-        return jsonify({'success': False, 'message': 'Name or UUID required'}), 400
-    
-    success, msg = network_manager.delete_network(name_or_uuid)
-    return jsonify({'success': success, 'message': msg})
-
-@app.route('/api/networks/disconnect', methods=['POST'])
-def disconnect_network_api():
-    data = request.get_json()
-    name_or_uuid = data.get('name_or_uuid', None)
-    success, msg = network_manager.disconnect_network(name_or_uuid)
-    return jsonify({'success': success, 'message': msg})
-
-# --- SYSTEM COMMANDS ---
-@app.route('/api/system/reboot', methods=['POST'])
-def system_reboot():
-    try:
-        subprocess.run(['sudo', 'reboot'], check=True, timeout=5)
-        return jsonify({'success': True, 'message': 'System is rebooting...'}), 200
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Reboot command failed: {e}")
-        return jsonify({'success': False, 'message': f'Reboot failed: {e.stderr or e.stdout or str(e)}'}), 500
-    except subprocess.TimeoutExpired:
-        app.logger.info("Reboot command initiated (timed out waiting for completion, which is expected).")
-        return jsonify({'success': True, 'message': 'Reboot command initiated. The server will go down.'}), 202
-    except Exception as e:
-        app.logger.error(f"An unexpected error occurred during reboot: {e}")
-        return jsonify({'success': False, 'message': f'An unexpected error occurred: {str(e)}'}), 500
 
 @app.route('/api/config/cooldown', methods=['GET'])
 def get_cooldown_api():
