@@ -47,6 +47,8 @@ html { scroll-padding-top: 120px; }
 .brand .by { color: var(--muted); font-size: 14px; }
 .brand-logo { height: 36px; width: auto; display: block; }
 .brand .host { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-left: auto; }
+.brand .logout { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); text-decoration: none; margin-left: 12px; }
+.brand .logout:hover { color: var(--text); }
 nav.tabs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 nav.tabs a {
   font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
@@ -185,6 +187,7 @@ audio { height: 36px; color-scheme: dark; }
   .site-inner { padding-top: 8px; padding-bottom: 8px; }
   .brand-logo { height: 28px; }
   .brand .host { display: none; }
+  .brand .logout { margin-left: auto; }
   nav.tabs { flex-wrap: nowrap; overflow-x: auto; margin-top: 8px; padding: 0 0 6px 0; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   nav.tabs::-webkit-scrollbar { display: none; }
   nav.tabs a { white-space: nowrap; flex: 0 0 auto; padding: 6px 12px; }

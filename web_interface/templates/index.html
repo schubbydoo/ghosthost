@@ -14,6 +14,7 @@
                 <h1>GHOST<span>HOST</span></h1>
                 <span class="by">by</span><img class="brand-logo" src="/static/propkit/logo.png" alt="Strange Machine Labs" height="36">
                 <span class="host">{{ request.host.split(':')[0] }}</span>
+                {% if pk.login_state() == 'on' %}<a class="logout" href="/logout">Log out</a>{% endif %}
             </div>
             <nav class="tabs">
             <a href="#dashboard" data-tab="dashboard">Dashboard</a>
@@ -33,6 +34,12 @@
         <button type="button" class="btn btn-danger" id="btn-nowbar-stop">Stop</button>
     </div>
     <div class="wrap">
+        {% if pk.login_state() == 'unset' %}
+        <div class="alert alert-warning" id="pk-nologin">
+            No password is set, so anyone on this network can use this page.
+            <a href="/setup">Set a password</a>
+        </div>
+        {% endif %}
         {{ netguard_banner|safe }}
 {% if is_ap_mode %}
         <div class="alert alert-warning" role="alert">

@@ -42,6 +42,10 @@ propkit_cfg = propkit.PropConfig(
           ("system", "/system", "System")],
     service_name="ghosthost.service", base_dir=_BASE_DIR, state_dir=os.path.join(_BASE_DIR, "logs"),
     hotspot_profile=AP_CONNECTION_NAME,
+    # One shared login for the whole app once a password is set at /setup (open until then).
+    # Someone on the prop's own setup hotspot (button hold) needs no login: that is the way back in.
+    login=True,
+    login_bypass=lambda r: r.client_ip.startswith("192.168.4."),
 )
 propkit_flask.install(app, propkit_cfg)   # /system, /api/system, /api/netguard, restart/reboot, WiFi routes, /static/propkit/
 
