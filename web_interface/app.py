@@ -49,6 +49,14 @@ propkit_cfg = propkit.PropConfig(
 )
 propkit_flask.install(app, propkit_cfg)   # /system, /api/system, /api/netguard, restart/reboot, WiFi routes, /static/propkit/
 
+@app.template_global()
+def asset_v(filename):
+    """Changes when the file changes, so a browser never pairs a new page with an old stylesheet or script."""
+    try:
+        return int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+    except OSError:
+        return 0
+
 try:
     sys.path.append(os.path.join(os.path.expanduser("~"), "netguard"))
     import netguard.web as netguard_web

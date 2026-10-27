@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
     <title>Ghost Host</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_v('style.css')) }}">
 </head>
 <body>
     <header class="site">
         <div class="site-inner">
             <div class="brand">
                 <h1>GHOST<span>HOST</span></h1>
-                <span class="by">by</span><img class="brand-logo" src="/static/propkit/logo.png" alt="Strange Machine Labs" height="36">
+                <span class="by">by</span><img class="brand-logo" src="/static/propkit/logo.png?v={{ pk.asset_v }}" alt="Strange Machine Labs" height="36">
                 <span class="host">{{ request.host.split(':')[0] }}</span>
                 {% if pk.login_state() == 'on' %}<a class="logout" href="/logout">Log out</a>{% endif %}
             </div>
@@ -449,7 +449,7 @@
         var IS_AP_MODE = {{ is_ap_mode | tojson }};
         var AP_SSID = "{{ ap_ssid or '' }}";
     </script>
-    <script src="{{ url_for('static', filename='tabs.js') }}"></script>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='tabs.js', v=asset_v('tabs.js')) }}"></script>
+    <script src="{{ url_for('static', filename='script.js', v=asset_v('script.js')) }}"></script>
 </body>
 </html>
