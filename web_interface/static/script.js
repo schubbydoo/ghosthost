@@ -373,7 +373,35 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Upload audio files (one or several), one request each so a bad file doesn't sink the rest
+    // Upload audio files (one or several), one request each so a bad file doesn't sink the rest.
+    // XMLHttpRequest rather than fetch so the button can show progress, and so a transfer that
+    // stops moving gives up with a message instead of sitting on "Uploading..." forever.
+    function uploadOne(file, onProgress) {
+        return new Promise(resolve => {
+            const xhr = new XMLHttpRequest();
+            let stall = null;
+            const arm = () => { clearTimeout(stall); stall = setTimeout(() => xhr.abort(), 30000); };
+            const done = r => { clearTimeout(stall); resolve(r); };
+            xhr.open('POST', '/api/audio/upload');
+            xhr.upload.onprogress = e => { arm(); if (e.lengthComputable) onProgress(Math.round(100 * e.loaded / e.total)); };
+            xhr.upload.onload = () => { arm(); onProgress(null); };   // all sent: the Pi may now convert it
+            xhr.onload = () => {
+                let data = {};
+                try { data = JSON.parse(xhr.responseText); } catch (e) {}
+                if (xhr.status === 401) done({ error: 'Not logged in. Reload the page and log in again.' });
+                else done(data.success ? { filename: data.filename } : { error: data.error || ('server said ' + xhr.status) });
+            };
+            xhr.onerror = () => done({ error: 'connection failed' });
+            xhr.onabort = () => done({ error: 'no data moved for 30 seconds, gave up' });
+            xhr.ontimeout = () => done({ error: 'took longer than 10 minutes' });
+            xhr.timeout = 600000;
+            const formData = new FormData();
+            formData.append('file', file);
+            arm();
+            xhr.send(formData);
+        });
+    }
+
     btnUploadAudio.addEventListener('click', async function() {
         const files = audioUploadInput ? Array.from(audioUploadInput.files) : [];
         if (!files.length) {
@@ -383,18 +411,14 @@ document.addEventListener('DOMContentLoaded', function() {
         btnUploadAudio.disabled = true;
         const done = [], failed = [];
         for (let i = 0; i < files.length; i++) {
-            btnUploadAudio.textContent = `Uploading ${i + 1}/${files.length}...`;
-            displayMessage(uploadStatus, `Uploading ${files[i].name}...`, true);
-            const formData = new FormData();
-            formData.append('file', files[i]);
-            try {
-                const res = await fetch('/api/audio/upload', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (data.success) done.push(data.filename);
-                else failed.push(`${files[i].name} (${data.error || 'failed'})`);
-            } catch (err) {
-                failed.push(`${files[i].name} (${err})`);
-            }
+            const label = `${i + 1}/${files.length}`;
+            displayMessage(uploadStatus, `Sending ${files[i].name} (${Math.round(files[i].size / 1024)} KB)...`, true);
+            btnUploadAudio.textContent = `Sending ${label}...`;
+            const r = await uploadOne(files[i], pct => {
+                btnUploadAudio.textContent = pct === null ? `Converting ${label}...` : `Sending ${label} ${pct}%`;
+            });
+            if (r.filename) done.push(r.filename);
+            else failed.push(`${files[i].name} (${r.error})`);
         }
         if (done.length) {
             loadAudioFiles();
