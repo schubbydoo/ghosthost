@@ -373,6 +373,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    function displayMessage(element, message, isSuccess) {
+        if (element) {
+            element.textContent = message;
+            element.className = isSuccess ? 'form-text text-success' : 'form-text text-danger';
+        }
+    }
+
     // Upload audio files (one or several), one request each so a bad file doesn't sink the rest.
     // XMLHttpRequest rather than fetch so the button can show progress, and so a transfer that
     // stops moving gives up with a message instead of sitting on "Uploading..." forever.
