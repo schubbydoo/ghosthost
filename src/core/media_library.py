@@ -8,7 +8,7 @@ atomic saves, delete warnings). This module supplies what is specific to Ghost H
                    <name>_timestamps.json travels with it (deleted with it)
   * timing       - mouth-sync timing through ElevenLabs, one file at a time in a background worker, so a slow or
                    offline provider can never block an upload or a request
-  * actions      - Time the words, Use as default sound, Put on / Remove from the Live tab, boost louder / quieter
+  * actions      - Time the words, Use as default sound, Put on / Remove from the Live tab, Set boost (dB)
   * usage        - where a clip is used (pools, triggers, sensor ports, shows, the default), as links
 """
 import json
@@ -20,7 +20,7 @@ import threading
 import wave
 from pathlib import Path
 
-from propkit.files import FileAction, FileLibrary, Option, clean_name
+from propkit.files import Facet, FileAction, FileLibrary, Option, Param, clean_name
 
 from src.core.config_manager import config
 
@@ -28,7 +28,6 @@ BASE_DIR = str(Path(__file__).resolve().parent.parent.parent)
 SCRIPT = os.path.join(BASE_DIR, "tools", "elevenlabs_stt_timestamps.py")
 BATCH_LIMIT = 10          # timing jobs accepted per press: each one is a network call to ElevenLabs
 TIMING_TIMEOUT_S = 120
-GAIN_STEP_DB = 3
 
 
 def _soundfiles_dir():
@@ -79,6 +78,10 @@ class GhostStore:
         gains = config.get('audio_gains', {}) or {}
         live = set(config.get('live_files', []) or [])
         default = config.get('audio.default_file', '')
+        pools_of = {}
+        for pool in config.get('greeting_pools', []) or []:
+            for f in pool.get('files') or []:
+                pools_of.setdefault(f, []).append(str(pool.get('name', '?')))
         out = []
         try:
             names = sorted((n for n in os.listdir(self.root) if n.lower().endswith(".wav") and not n.startswith(".")), key=str.lower)
@@ -95,9 +98,13 @@ class GhostStore:
                     seconds = round(w.getnframes() / float(w.getframerate()), 1)
             except (wave.Error, EOFError, OSError, ZeroDivisionError):
                 seconds = None
+            gain = float(gains.get(n, 0) or 0)
+            facts = [["Mouth timing", "%d words timed" % words if words else "none yet"]]
+            if gain:
+                facts.append(["Boost", "%+g dB" % gain])
             out.append({"id": n, "name": n, "size": st.st_size, "mtime": int(st.st_mtime), "seconds": seconds,
-                        "description": descriptions.get(n, ""),
-                        "extra": {"words": words, "gain": float(gains.get(n, 0) or 0), "live": n in live, "default": n == default}})
+                        "description": descriptions.get(n, ""), "facets": {"pool": pools_of.get(n, [])}, "facts": facts,
+                        "extra": {"words": words, "gain": gain, "live": n in live, "default": n == default}})
         return out
 
     def description(self, name, collection=None):
@@ -190,7 +197,22 @@ class GhostStore:
         _TIMING.pop(name, None)
 
     def rename(self, name, new, collection=None):
-        raise OSError("Renaming is turned off: pools, triggers and shows refer to clips by name.")
+        """Rename the clip and its timing file. The places that refer to it by name are rewritten by rewrite_references()
+        (propkit calls that straight after)."""
+        src, dst = self.path(name), self.path(new)
+        if os.path.exists(dst):
+            raise FileExistsError(new)
+        os.rename(src, dst)
+        try:
+            os.rename(os.path.join(self.root, _sidecar(name)), os.path.join(self.root, _sidecar(new)))
+        except OSError:
+            pass
+        self._forget_derived(name)           # the boosted copy is named after the clip: it is made again on the next play
+
+    def preview_path(self, name, collection=None):
+        """What the detail panel plays: the clip as the prop plays it (with its boost) when it has one."""
+        gain = float((config.get('audio_gains', {}) or {}).get(name, 0) or 0)
+        return self.ac.gain_path(name, gain) if gain else None
 
     def describe(self, name, text, collection=None):
         self.path(name)
@@ -202,6 +224,37 @@ class GhostStore:
             d.pop(name, None)
         config.set('audio_descriptions', d)
         config.save_config()
+
+
+def _swap(obj, old, new):
+    """Copy of obj with the clip's name replaced wherever it appears as a value ("old.wav" or "file:old.wav")."""
+    if isinstance(obj, dict):
+        return {k: _swap(v, old, new) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_swap(v, old, new) for v in obj]
+    if obj == old:
+        return new
+    if obj == "file:" + old:
+        return "file:" + new
+    return obj
+
+
+def rewrite_references(old, new, collection=None):
+    """After a rename, point everything that used the old name at the new one: pools, the default sound, Live buttons,
+    sensor ports, network and timed triggers, saved shows, the description and the boost."""
+    config.load_config()
+    for key in ('greeting_pools', 'live_files', 'sensor_pools', 'network_triggers', 'timed_triggers', 'shows'):
+        cur = config.get(key)
+        if cur:
+            config.set(key, _swap(cur, old, new))
+    if config.get('audio.default_file') == old:
+        config.set('audio.default_file', new)
+    for key in ('audio_descriptions', 'audio_gains'):
+        d = dict(config.get(key, {}) or {})
+        if old in d:
+            d[new] = d.pop(old)
+            config.set(key, d)
+    config.save_config()
 
 
 # ---- mouth-sync timing: one file at a time, in the background ----------------------------------------------------
@@ -269,14 +322,14 @@ def queue_timing(names):
             else:
                 _TIMING[n] = ("queued", "")
                 _JOBS.put(n)
-                out[n] = {"ok": True, "message": "Queued (about 10-20 seconds each). Reload the list to see the result."}
+                out[n] = {"ok": True, "message": "Queued (about 10-20 seconds each)."}
     return out
 
 
 def _timing_pill(f):
     state = _TIMING.get(f["name"])
     if state and state[0] in ("queued", "running"):
-        return {"text": "timing...", "tone": "muted"}
+        return {"text": "timing...", "tone": "busy"}      # busy: the page refreshes itself until it is done
     if state and state[0] == "failed":
         return {"text": "timing failed: " + state[1], "tone": "bad"}
     words = f["extra"].get("words")
@@ -320,28 +373,30 @@ def _make_actions(ac):
             return {n: _ok("On the Live tab." if on else "Removed from the Live tab.") for n in names}
         return run
 
-    def boost(step):
-        """step > 0 louder, < 0 quieter, 0 clears. A boosted copy is made now so the next play starts at once."""
-        def run(names, options, collection):
-            config.load_config()
-            gains = dict(config.get('audio_gains', {}) or {})
-            out = {}
-            for n in names:
-                cur = float(gains.get(n, 0) or 0)
-                new = 0.0 if step == 0 else max(-ac.MAX_GAIN_DB, min(ac.MAX_GAIN_DB, round(cur + step, 1)))
-                ac.clear_gain_cache(n)
-                if new:
-                    if not ac.gain_path(n, new):
-                        out[n] = {"ok": False, "message": "Could not make the boosted copy (is ffmpeg installed?)"}
-                        continue
-                    gains[n] = new
-                else:
-                    gains.pop(n, None)
-                out[n] = _ok("Boost is now %+g dB." % new if new else "Boost removed.")
-            config.set('audio_gains', gains)
-            config.save_config()
-            return out
-        return run
+    def boost(names, options, collection):
+        """Set the boost in dB (0 clears it). A boosted copy is made now so the next play starts at once."""
+        try:
+            db = round(float((options.get("params") or {}).get("db", 0) or 0), 1)
+        except (TypeError, ValueError):
+            return {n: {"ok": False, "message": "The boost must be a number."} for n in names}
+        if not -ac.MAX_GAIN_DB <= db <= ac.MAX_GAIN_DB:
+            return {n: {"ok": False, "message": "The boost must be between -%d and %d dB." % (ac.MAX_GAIN_DB, ac.MAX_GAIN_DB)} for n in names}
+        config.load_config()
+        gains = dict(config.get('audio_gains', {}) or {})
+        out = {}
+        for n in names:
+            ac.clear_gain_cache(n)
+            if db:
+                if not ac.gain_path(n, db):
+                    out[n] = {"ok": False, "message": "Could not make the boosted copy (is ffmpeg installed?)"}
+                    continue
+                gains[n] = db
+            else:
+                gains.pop(n, None)
+            out[n] = _ok("Boost is now %+g dB." % db if db else "Boost removed.")
+        config.set('audio_gains', gains)
+        config.save_config()
+        return out
 
     return [
         FileAction("timestamps", "Time the words", run=_run_timing, pending=_timing_pending, status=_timing_pill,
@@ -351,10 +406,8 @@ def _make_actions(ac):
         FileAction("live_on", "Put on the Live tab", run=live_set(True),
                    status=lambda f: {"text": "on Live tab", "tone": "muted"} if f["extra"].get("live") else None),
         FileAction("live_off", "Remove from the Live tab", run=live_set(False)),
-        FileAction("boost_up", "Louder (+%d dB)" % GAIN_STEP_DB, run=boost(GAIN_STEP_DB),
+        FileAction("boost", "Set boost", run=boost, params=[Param("db", "Boost (dB, 0 removes it)", "number", 0, min=-ac.MAX_GAIN_DB, max=ac.MAX_GAIN_DB, step=0.5)],
                    status=lambda f: {"text": "boost %+g dB" % f["extra"]["gain"], "tone": "muted"} if f["extra"].get("gain") else None),
-        FileAction("boost_down", "Quieter (-%d dB)" % GAIN_STEP_DB, run=boost(-GAIN_STEP_DB)),
-        FileAction("boost_clear", "Remove boost", run=boost(0)),
     ]
 
 
@@ -392,5 +445,6 @@ def build(audio_controller):
         upload_options=[Option("timestamps", "Get the mouth-sync timing after upload", default=True,
                                help="Needs the ElevenLabs key. If it is offline the sound still uploads and the list says why timing failed.")],
         after_upload=lambda names, options, collection: queue_timing(names) if options.get("timestamps") else None,
-        actions=_make_actions(audio_controller), usage=usage, allow_rename=False,
+        actions=_make_actions(audio_controller), usage=usage, allow_rename=True, on_rename=rewrite_references,
+        facets=[Facet("pool", "Pool")],
         intro="Upload, find and manage the sounds the prop plays. Pools, triggers and the Live tab pick from these.")

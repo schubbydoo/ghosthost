@@ -169,7 +169,7 @@ def build():
     return ai.AIConfig(
         providers=[ai.Provider("elevenlabs", "ElevenLabs", "ELEVENLABS_API_KEY")],
         sections=[ai.Section("models", "Models", help="Applies the next time you press Generate timestamps on the Media tab.", fields=[
-            ai.Field("stt_model", "", "model", role="listen", options=STT_OPTIONS,
+            ai.Field("stt_model", "", "model", provider="elevenlabs", role="listen", options=STT_OPTIONS,
                      help="Here: finds the word timing for the mouth.")])],
         load=load, save=save, defaults=defaults, test=test, test_label="Test: time the words in a clip",
         test_accepts="audio/*", test_input="the shortest clip in the Media list",
