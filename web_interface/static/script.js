@@ -22,36 +22,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const tableTriggers = document.getElementById('table-triggers');
 
     // --- STATUS SECTION LOGIC ---
-    const statusNetwork = document.getElementById('status-network');
-    const statusIp = document.getElementById('status-ip');
-    const statusApMode = document.getElementById('status-ap-mode');
-
+    // (Network and AP-mode lines live on the System page now.)
     function updateStatusUI(data) {
-        // Network (use config default if not present)
-        if (data.current_network_ssid) {
-            statusNetwork.textContent = data.current_network_ssid;
-        } else {
-            statusNetwork.textContent = 'Homenet1';
-        }
-        // IP Address
-        if (data.ip_address) {
-            statusIp.textContent = data.ip_address;
-        } else {
-            statusIp.textContent = '192.168.128.105';
-        }
-        if (statusApMode) {
-            if (data.ap_mode_active) {
-                statusApMode.textContent = `Active (${data.ap_mode_ssid || DEFAULT_AP_SETUP_SSID} at ${data.ap_mode_ip || 'N/A'})`;
-                statusApMode.className = 'text-warning';
-            } else {
-                statusApMode.textContent = 'Inactive';
-                statusApMode.className = 'text-muted';
-            }
-        }
-        // Update overall UI based on AP mode (some is handled by Jinja, this can be supplemental)
         if (IS_AP_MODE) {
-            // Optional: additional JS-based UI adjustments if Jinja isn't enough
-            // e.g., specifically disable buttons that might still be visible
             if(btnSetDefaultAudio) btnSetDefaultAudio.disabled = true;
             if(btnUploadAudio) btnUploadAudio.disabled = true;
             if(btnSetVolume) btnSetVolume.disabled = true;
@@ -1829,37 +1802,4 @@ document.addEventListener('DOMContentLoaded', function() {
         pollSensorTest();
     }
 
-    // --- DASHBOARD HEALTH ---
-    async function loadHealth() {
-        const grid = document.getElementById('health-grid');
-        if (!grid) return;
-        let h;
-        try { h = await (await fetch('/api/health')).json(); } catch (e) { return; }
-        const fmtUp = s => { const d = Math.floor(s / 86400), hr = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + 'd ' : '') + hr + 'h ' + m + 'm'; };
-        let show = 'Idle', cls = 'bg-primary';
-        if (!h.controller_up) { show = 'Controller not responding'; cls = 'bg-danger'; }
-        else if (h.performing) { show = 'Performing'; cls = 'bg-info'; }
-        else if (h.cooling_down) { show = `Cooldown ${Math.ceil(h.cooldown_remaining)}s`; cls = 'bg-warning'; }
-        const items = [
-            ['Prop', `<span class="badge ${cls}">${show}</span>`],
-            ['Pi uptime', h.uptime_seconds != null ? fmtUp(h.uptime_seconds) : '--'],
-            ['CPU temp', h.cpu_temp_c != null ? h.cpu_temp_c.toFixed(1) + ' C' : '--'],
-            ['Memory used', h.mem_used_pct != null ? h.mem_used_pct + '%' : '--'],
-            ['Disk used', h.disk_used_pct != null ? h.disk_used_pct + '%' : '--'],
-            ['Audio files', h.audio_files],
-            ['Files w/o timestamps', h.missing_timestamps],
-            ['Default audio', h.default_audio || '--'],
-        ];
-        grid.innerHTML = '';
-        items.forEach(([k, v]) => {
-            const d = document.createElement('div');
-            d.className = 'stat';
-            d.innerHTML = '<div class="k"></div><div class="v"></div>';
-            d.firstChild.textContent = k;
-            d.lastChild.innerHTML = v;
-            grid.appendChild(d);
-        });
-    }
-    loadHealth();
-    setInterval(loadHealth, 10000);
 });

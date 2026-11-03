@@ -4,7 +4,7 @@
   const tabs = Array.from(document.querySelectorAll('nav.tabs a[data-tab]'));
   const panes = Array.from(document.querySelectorAll('.tab-pane'));
   function show(name) {
-    if (!panes.some(p => p.dataset.tab === name)) name = (typeof IS_AP_MODE !== 'undefined' && IS_AP_MODE) ? 'system' : 'dashboard';
+    if (!panes.some(p => p.dataset.tab === name)) name = (typeof IS_AP_MODE !== 'undefined' && IS_AP_MODE) ? 'system' : 'live';
     panes.forEach(p => p.classList.toggle('active', p.dataset.tab === name));
     tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.body.dataset.tab = name;

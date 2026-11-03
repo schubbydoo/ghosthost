@@ -34,16 +34,23 @@ if not app.debug:
 sys.path.append(os.environ.get("PROPKIT_DIR", os.path.join(os.path.expanduser("~"), "propkit")))
 import propkit
 from propkit import flask_app as propkit_flask
+from propkit.stats import StatsSpec
 _BASE_DIR = str(Path(__file__).resolve().parent.parent)
 propkit_cfg = propkit.PropConfig(
     name="Ghost Host", brand=("GHOST", "HOST"),
-    tabs=[("dashboard", "/#dashboard", "Dashboard"), ("live", "/#live", "Live"), ("media", "/#media", "Media"),
+    tabs=[("dashboard", "/dashboard", "Dashboard"), ("live", "/#live", "Live"), ("media", "/#media", "Media"),
           ("pools", "/#pools", "Pools"), ("triggers", "/#triggers", "Triggers"), ("idle", "/#idle", "Idle"),
           ("system", "/system", "System")],
     service_name="ghosthost.service", base_dir=_BASE_DIR, state_dir=os.path.join(_BASE_DIR, "logs"),
     hotspot_profile=AP_CONNECTION_NAME,
     # One shared login for the whole app once a password is set at /setup (open until then).
     # Someone on the prop's own setup hotspot (button hold) needs no login: that is the way back in.
+    # Activity (every performance) is recorded by the controller into logs/events.jsonl; propkit draws the Dashboard from it
+    stats=StatsSpec(
+        noun="performance",
+        outcomes={"ok": ("Played", "good"), "error": ("Failed", "bad"), "stopped": ("Stopped", "muted")},
+        ignore_in_rate=("stopped",)),
+    events_dir=os.path.join(_BASE_DIR, "logs"),
     login=True,
     login_bypass=lambda r: r.client_ip.startswith("192.168.4."),
 )

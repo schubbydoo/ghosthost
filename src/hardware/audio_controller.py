@@ -23,6 +23,7 @@ class AudioController:
         self.is_playing = False
         self.current_audio_thread = None
         self._proc = None  # running aplay, so stop_audio can really stop it
+        self.last_result = None
         self.playback_complete_callback = None
         
         self.logger.info("Audio Controller initialized")
@@ -154,13 +155,16 @@ class AudioController:
     
     def _play_audio_worker(self, audio_path: str):
         """Worker thread for audio playback using aplay subprocess"""
+        self.last_result = 'error'   # how the last playback ended: ok | stopped | error (read by the completion callback)
         try:
             self._proc = subprocess.Popen(['aplay', audio_path], stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE, text=True)
             _, stderr = self._proc.communicate()
             if self._proc.returncode == 0:
+                self.last_result = 'ok'
                 self.logger.info(f"Audio playback completed: {audio_path}")
             elif self._proc.returncode < 0:
+                self.last_result = 'stopped'
                 self.logger.info(f"Audio playback stopped: {audio_path}")
             else:
                 self.logger.error(f"aplay failed: {stderr}")

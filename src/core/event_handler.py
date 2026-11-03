@@ -5,15 +5,31 @@ Coordinates sensor events with motor, audio, and LED responses.
 """
 
 import logging
+import os
+import sys
 import time
+from pathlib import Path
 from typing import Optional
 from src.hardware import SensorManager, SensorType, MotorController, AudioController, LEDController
 from src.core.greeting_pool import GreetingPicker
+
+def _make_recorder():
+    """The shared activity log (propkit). Optional: without propkit nothing is recorded and nothing else changes."""
+    try:
+        sys.path.append(os.environ.get("PROPKIT_DIR", os.path.join(os.path.expanduser("~"), "propkit")))
+        from propkit.stats import Recorder
+        return Recorder(str(Path(__file__).resolve().parent.parent.parent / "logs"))
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Activity recording is off: {e}")
+        return None
+
 
 class EventHandler:
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.recorder = _make_recorder()
+        self._perf = None   # the performance in progress: file, source, extra, start time
         
         # State tracking
         self.performance_active = False
@@ -31,6 +47,32 @@ class EventHandler:
         
         self.logger.info("Event Handler initialized")
     
+    @staticmethod
+    def _source_for(trigger_id):
+        """Where a network-style performance came from, from the id the caller passed."""
+        if trigger_id == 'live':
+            return 'live'
+        if str(trigger_id or '').startswith('timed:'):
+            return 'timed'
+        return 'network_trigger'
+
+    def _perf_started(self, audio_file, source, **extra):
+        self._perf = {'file': audio_file, 'source': source, 'extra': extra, 't0': time.time()}
+
+    def _perf_record(self, outcome, audio_file=None, source=None, seconds=None, **extra):
+        """Add one line to the activity log. Never raises: the log must not disturb a performance."""
+        try:
+            if not self.recorder:
+                return
+            p = self._perf or {}
+            if seconds is None and p.get('t0'):
+                seconds = time.time() - p['t0']
+            merged = dict(p.get('extra') or {}, **extra)
+            self.recorder.record('play', outcome, seconds=seconds, detail=audio_file or p.get('file'),
+                                 source=source or p.get('source'), **merged)
+        except Exception:
+            pass
+
     def handle_event(self, event_type: str, data):
         """Main event handler called by sensor manager"""
         if event_type == 'sensor_triggered':
@@ -89,11 +131,13 @@ class EventHandler:
                           or self.config.get('audio.default_file', 'HMGreeting.wav'))
 
         self.performance_active = True
+        source = self._source_for(trigger_id)
         try:
             # Get audio duration
             audio_duration = self.audio_controller.get_audio_duration(selected_audio)
             if not audio_duration:
                 self.logger.error(f"Could not get duration for audio file: {selected_audio}")
+                self._perf_record('error', selected_audio, source, reason='bad audio file')
                 self.performance_active = False
                 return { 'success': False, 'message': 'Invalid audio file' }
 
@@ -101,6 +145,7 @@ class EventHandler:
             self.led_controller.eyes_on_during_audio(audio_duration)
 
             # Start audio playback with completion callback
+            self._perf_started(selected_audio, source)
             audio_started = self.audio_controller.play_audio_file(
                 selected_audio,
                 self._performance_complete
@@ -108,6 +153,8 @@ class EventHandler:
 
             if not audio_started:
                 self.logger.error("Failed to start audio playback")
+                self._perf_record('error', selected_audio, source, reason='could not start')
+                self._perf = None
                 self.led_controller.turn_off_eyes()
                 self.performance_active = False
                 return { 'success': False, 'message': 'Failed to start audio playback' }
@@ -125,6 +172,8 @@ class EventHandler:
 
         except Exception as e:
             self.logger.error(f"Error starting network-triggered performance: {e}")
+            self._perf_record('error', selected_audio, source, reason='exception')
+            self._perf = None
             self.performance_active = False
             self._cleanup_performance()
             return { 'success': False, 'message': 'Unexpected error starting performance' }
@@ -154,7 +203,7 @@ class EventHandler:
                 return {'success': False, 'message': 'Performance already active'}
             if self.sensor_manager.is_in_cooldown():
                 return {'success': False, 'message': 'In cooldown period'}
-            self._start_performance(sensor_type)
+            self._start_performance(sensor_type, source='live')
             return {'success': self.performance_active, 'message': 'Performance started' if self.performance_active else 'Failed to start'}
         if command == 'play':
             if self.performance_active:
@@ -163,9 +212,10 @@ class EventHandler:
             return self.trigger_network_performance(body.get('audio_file'), body.get('pool_id'), 'live')
         return {'success': False, 'message': 'Unknown command'}
 
-    def _start_performance(self, sensor_type: SensorType):
+    def _start_performance(self, sensor_type: SensorType, source: str = 'sensor'):
         """Start the main animatronic performance"""
         self.performance_active = True
+        audio_file = None
         
         try:
             # Get audio file to play
@@ -175,12 +225,15 @@ class EventHandler:
             audio_duration = self.audio_controller.get_audio_duration(audio_file)
             if not audio_duration:
                 self.logger.error(f"Could not get duration for audio file: {audio_file}")
+                self._perf_record('error', audio_file, source, port=sensor_type.value, reason='bad audio file')
+                self.performance_active = False   # was left set, which made the prop look busy forever
                 return
             
             # Turn on eyes immediately
             self.led_controller.eyes_on_during_audio(audio_duration)
             
             # Start audio playback with completion callback
+            self._perf_started(audio_file, source, port=sensor_type.value)
             audio_started = self.audio_controller.play_audio_file(
                 audio_file, 
                 self._performance_complete
@@ -188,6 +241,8 @@ class EventHandler:
             
             if not audio_started:
                 self.logger.error("Failed to start audio playback")
+                self._perf_record('error', audio_file, source, port=sensor_type.value, reason='could not start')
+                self._perf = None
                 self.led_controller.turn_off_eyes()
                 self.performance_active = False
                 return
@@ -204,6 +259,8 @@ class EventHandler:
             
         except Exception as e:
             self.logger.error(f"Error starting performance: {e}")
+            self._perf_record('error', audio_file, source, port=sensor_type.value, reason='exception')
+            self._perf = None
             self.performance_active = False
             self._cleanup_performance()
     
@@ -211,6 +268,10 @@ class EventHandler:
         """Called when audio playback completes"""
         self.logger.info("Performance completed")
         self.performance_active = False
+        if self._perf:
+            result = getattr(self.audio_controller, 'last_result', None) or 'ok'
+            self._perf_record(result)
+            self._perf = None
         
         # Start cooldown period
         self.sensor_manager.start_cooldown()
