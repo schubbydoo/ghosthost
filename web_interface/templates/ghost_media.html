@@ -1,6 +1,10 @@
 {% extends "propkit/media.html" %}
 {# The shared Media tab plus Ghost Host's one prop-specific control: the speaker volume. #}
 {% block content %}
+<div class="notification is-danger" id="gh-nowbar" style="display:none;align-items:center;gap:12px;flex-wrap:wrap">
+    <strong id="gh-now-text">Playing on the prop</strong>
+    <button class="button is-danger" type="button" id="gh-now-stop">Stop</button>
+</div>
 {{ super() }}
 <div class="box" id="gh-volume">
     <h2 class="title is-4">Volume</h2>
@@ -15,6 +19,22 @@
 {% endblock %}
 {% block scripts %}{{ super() }}
 <script>
+(function () {
+    // Playing a clip on the prop can run for over a minute: show it here, with Stop, while it does
+    var bar = document.getElementById('gh-nowbar'), txt = document.getElementById('gh-now-text');
+    function poll() {
+        fetch('/api/health', {cache: 'no-store'}).then(function (x) { return x.json(); }).then(function (h) {
+            bar.style.display = h.performing ? 'flex' : 'none';
+            txt.textContent = h.performing ? 'Playing on the prop: ' + (h.now_playing || 'now') : '';
+        }).catch(function () {});
+    }
+    document.getElementById('gh-now-stop').addEventListener('click', function () {
+        fetch('/api/live/stop', {method: 'POST'}).then(poll).catch(function () {});
+    });
+    poll(); setInterval(poll, 2500);
+    // After pressing "Play on the prop" the bar should appear at once
+    document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('[data-single="play"]')) setTimeout(poll, 700); });
+})();
 (function () {
     var r = document.getElementById('gh-vol'), v = document.getElementById('gh-vol-val'), m = document.getElementById('gh-vol-msg');
     r.addEventListener('input', function () { v.textContent = r.value + '%'; });

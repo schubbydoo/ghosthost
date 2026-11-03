@@ -20,7 +20,7 @@ import threading
 import wave
 from pathlib import Path
 
-from propkit.files import Facet, FileAction, FileLibrary, Option, Param, clean_name
+from propkit.files import Facet, FileAction, FileLibrary, Option, Param, plain_existing_name
 
 from src.core.config_manager import config
 
@@ -60,7 +60,7 @@ class GhostStore:
     # paths
     def path(self, name, collection=None):
         """Real path of a clip in SoundFiles; ValueError for anything that is not a plain .wav inside it."""
-        if clean_name(name) != name or not name.lower().endswith(".wav"):
+        if not plain_existing_name(name) or not name.lower().endswith(".wav"):
             raise ValueError("bad name")
         root = os.path.realpath(self.root)
         p = os.path.join(root, name)
@@ -104,6 +104,7 @@ class GhostStore:
                 facts.append(["Boost", "%+g dB" % gain])
             out.append({"id": n, "name": n, "size": st.st_size, "mtime": int(st.st_mtime), "seconds": seconds,
                         "description": descriptions.get(n, ""), "facets": {"pool": pools_of.get(n, [])}, "facts": facts,
+                        "params": {"db": gain if gain else ""},          # the boost box starts at the clip's current boost (empty when it has none, so it never keeps another clip's number)
                         "extra": {"words": words, "gain": gain, "live": n in live, "default": n == default}})
         return out
 
@@ -404,6 +405,19 @@ def _make_actions(ac):
         config.save_config()
         return out
 
+    def play_on_prop(names, options, collection):
+        """Play a clip through the prop now (what the Live tab's buttons do). Stop is on this page while it plays."""
+        import requests
+        port = config.get('network_trigger.port', 5055)
+        try:
+            r = requests.post("http://127.0.0.1:%s/api/live/play" % port, json={"audio_file": names[0]}, timeout=5)
+            msg = (r.json() or {}).get("message", "") if r.content else ""
+        except requests.exceptions.RequestException:
+            return {names[0]: {"ok": False, "message": "The prop's controller is not answering."}}
+        except ValueError:
+            msg = ""
+        return {names[0]: {"ok": r.status_code == 200, "message": "Playing on the prop." if r.status_code == 200 else (msg or "It did not start.")}}
+
     def remove_boost(names, options, collection):
         config.load_config()
         gains = dict(config.get('audio_gains', {}) or {})
@@ -415,6 +429,7 @@ def _make_actions(ac):
         return {n: _ok("Boost removed.") for n in names}
 
     return [
+        FileAction("play", "Play on the prop", run=play_on_prop, single_only=True),
         FileAction("timestamps", "Time the words", run=_run_timing, pending=_timing_pending, status=_timing_pill,
                    pending_label="Time all untimed"),
         FileAction("default", "Use as default sound", run=use_default, single_only=True,
