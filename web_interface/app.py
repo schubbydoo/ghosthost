@@ -34,11 +34,12 @@ if not app.debug:
 sys.path.append(os.environ.get("PROPKIT_DIR", os.path.join(os.path.expanduser("~"), "propkit")))
 import propkit
 from propkit import flask_app as propkit_flask
-from propkit.stats import StatsSpec
+from propkit.stats import StatsSpec, by_field_card
+from src.core import ai_settings
 _BASE_DIR = str(Path(__file__).resolve().parent.parent)
 propkit_cfg = propkit.PropConfig(
     name="Ghost Host", brand=("GHOST", "HOST"),
-    tabs=[("dashboard", "/dashboard", "Dashboard"), ("live", "/#live", "Live"), ("media", "/#media", "Media"),
+    tabs=[("dashboard", "/dashboard", "Dashboard"), ("ai", "/ai", "AI"), ("live", "/#live", "Live"), ("media", "/#media", "Media"),
           ("pools", "/#pools", "Pools"), ("triggers", "/#triggers", "Triggers"), ("idle", "/#idle", "Idle"),
           ("system", "/system", "System")],
     service_name="ghosthost.service", base_dir=_BASE_DIR, state_dir=os.path.join(_BASE_DIR, "logs"),
@@ -48,13 +49,17 @@ propkit_cfg = propkit.PropConfig(
     # Activity (every performance) is recorded by the controller into logs/events.jsonl; propkit draws the Dashboard from it
     stats=StatsSpec(
         noun="performance",
-        outcomes={"ok": ("Played", "good"), "error": ("Failed", "bad"), "stopped": ("Stopped", "muted")},
-        ignore_in_rate=("stopped",)),
+        outcomes={"ok": ("Played", "good"), "error": ("Failed", "bad"), "stopped": ("Stopped", "muted")},   # muted = not a try
+        labels={"visits": ("Performances", "all plays"), "rate": ("Played OK", "of plays that started")},
+        extra_cards=[by_field_card("source", "Where it came from",
+                                   {"sensor": "Sensor", "network_trigger": "Network trigger", "timed": "Timer", "live": "Live tab"})]),
+    ai=ai_settings.build(),
     events_dir=os.path.join(_BASE_DIR, "logs"),
     login=True,
     login_bypass=lambda r: r.client_ip.startswith("192.168.4."),
 )
-propkit_flask.install(app, propkit_cfg)   # /system, /api/system, /api/netguard, restart/reboot, WiFi routes, /static/propkit/
+propkit_flask.install(app, propkit_cfg)
+ai_settings.start_background_checks()   # /system, /api/system, /api/netguard, restart/reboot, WiFi routes, /static/propkit/
 
 @app.template_global()
 def asset_v(filename):
@@ -247,13 +252,14 @@ def generate_timestamps_api(filename):
     audio_file_path_in_soundfiles = os.path.join(soundfiles_dir, safe_filename)
 
     env = os.environ.copy()
+    env['ELEVENLABS_STT_MODEL'] = ai_settings.stt_model()   # chosen on the AI tab
 
     try:
         app.logger.info(f"Executing timestamp script: {sys.executable} {script_path} '{safe_filename}'")
         process = subprocess.run(
             [sys.executable, script_path, safe_filename],
             capture_output=True, text=True, check=True, timeout=120,
-            cwd=str(Path(__file__).parent.parent)
+            cwd=str(Path(__file__).parent.parent), env=env
         )
         app.logger.info(f"Timestamp script stdout: {process.stdout}")
         expected_json_filename = os.path.splitext(safe_filename)[0] + "_timestamps.json"

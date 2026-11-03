@@ -194,6 +194,11 @@ audio { height: 36px; color-scheme: dark; }
   html { scroll-padding-top: 100px; }
   td, th { padding: 9px 8px; }
 }
+.notification.is-danger { border-color: var(--danger); background: rgba(255,77,77,.07); }
+.notification.is-warning { border-color: var(--accent2); }
+.is-hidden { display: none; }
+.notification { border: 2px solid var(--accent2); border-left-width: 6px; border-radius: 8px; padding: 14px 18px; margin-bottom: 22px; background: rgba(255,106,61,.07); }
+.notification ul { margin: 6px 0 6px 20px; }
 .alert-danger { border-color: var(--danger); background: rgba(255,77,77,.07); }
 .alert-success, .alert-info { border-color: var(--accent); background: rgba(57,255,136,.06); }
 

@@ -7,7 +7,7 @@ import argparse
 
 SOUNDFILES_DIR = "SoundFiles"
 API_URL = "https://api.elevenlabs.io/v1/speech-to-text"
-MODEL_ID = "scribe_v1"
+MODEL_ID = os.getenv("ELEVENLABS_STT_MODEL") or "scribe_v1"   # set on the web UI's AI tab
 
 
 def list_audio_files():

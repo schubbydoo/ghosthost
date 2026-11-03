@@ -18,6 +18,7 @@
             </div>
             <nav class="tabs">
             <a href="/dashboard">Dashboard</a>
+            <a href="/ai">AI</a>
             <a href="#live" data-tab="live">Live</a>
             <a href="#media" data-tab="media">Media</a>
             <a href="#pools" data-tab="pools">Pools</a>
@@ -41,6 +42,21 @@
         </div>
         {% endif %}
         {{ netguard_banner|safe }}
+        <div id="pk-ai-banner" class="notification is-hidden" style="margin-top:0"></div>
+        <script>
+            // A failing or missing API key shows here, as on every propkit page
+            fetch('/api/ai/health', {cache: 'no-store'}).then(function (r) { return r.json(); }).then(function (s) {
+                if (!s || s.overall === 'ok' || s.overall === 'unknown' || !s.checked_at) return;
+                var el = document.getElementById('pk-ai-banner'), failing = s.overall === 'fail';
+                el.className = 'notification ' + (failing ? 'is-danger' : 'is-warning');
+                var head = document.createElement('strong'); head.textContent = (failing ? 'Needs attention: ' : 'AI health check: ');
+                el.appendChild(head);
+                var ul = document.createElement('ul');
+                (s.items || []).filter(function (i) { return i.status !== 'ok'; }).forEach(function (i) { var li = document.createElement('li'); li.textContent = i.name + ' - ' + i.detail; ul.appendChild(li); });
+                el.appendChild(ul);
+                var a = document.createElement('a'); a.href = '/ai'; a.textContent = 'Open the AI tab'; el.appendChild(a);
+            }).catch(function () {});
+        </script>
 {% if is_ap_mode %}
         <div class="alert alert-warning" role="alert">
             <h4>WiFi Setup Mode Active</h4>
