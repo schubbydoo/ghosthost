@@ -7,6 +7,7 @@ Handles loading, validating, and updating configuration settings.
 import copy
 import yaml
 import os
+import tempfile
 import logging
 from typing import Dict, Any
 from pathlib import Path
@@ -40,7 +41,11 @@ class ConfigManager:
                     self.config = copy.deepcopy(self._cache_data)
                     return
                 with open(self.config_path, 'r') as file:
-                    self.config = yaml.load(file, Loader=_YamlLoader)
+                    loaded = yaml.load(file, Loader=_YamlLoader)
+                if not isinstance(loaded, dict):
+                    # An empty or unreadable file is never a real config: keep what we had until the next good read
+                    raise ValueError("config file is empty or not a mapping")
+                self.config = loaded
                 self._cache_stamp = stamp
                 self._cache_data = copy.deepcopy(self.config)
                 self.logger.info(f"Configuration loaded from {self.config_path}")
@@ -49,7 +54,8 @@ class ConfigManager:
                 self.config = self._get_default_config()
         except Exception as e:
             self.logger.error(f"Error loading configuration: {e}")
-            self.config = self._get_default_config()
+            if not isinstance(self.config, dict) or not self.config:
+                self.config = self._get_default_config()      # nothing earlier to fall back on
     
     def save_config(self):
         """Save current configuration to file"""
@@ -57,8 +63,26 @@ class ConfigManager:
             # Ensure directory exists
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             
-            with open(self.config_path, 'w') as file:
-                yaml.dump(self.config, file, default_flow_style=False, indent=2)
+            # Write a complete temporary file, then swap it in: the other process (the web UI and the controller share
+            # this file) must never read a half-written one. A truncated file reads as a config with settings missing,
+            # and a missing "sensor_enabled" means every port is on.
+            fd, tmp = tempfile.mkstemp(dir=str(self.config_path.parent), prefix='.config-', suffix='.tmp')
+            try:
+                with os.fdopen(fd, 'w') as file:
+                    yaml.dump(self.config, file, default_flow_style=False, indent=2)
+                    file.flush()
+                    os.fsync(file.fileno())
+                try:
+                    os.chmod(tmp, self.config_path.stat().st_mode & 0o777)
+                except OSError:
+                    os.chmod(tmp, 0o644)
+                os.replace(tmp, self.config_path)
+            except BaseException:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
             self._cache_stamp = None
             self.logger.info(f"Configuration saved to {self.config_path}")
             return True

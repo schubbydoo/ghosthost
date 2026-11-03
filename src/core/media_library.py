@@ -375,10 +375,15 @@ def _make_actions(ac):
 
     def boost(names, options, collection):
         """Set the boost in dB (0 clears it). A boosted copy is made now so the next play starts at once."""
+        raw = (options.get("params") or {}).get("db", "")
+        if str(raw).strip() == "":
+            return {n: {"ok": False, "message": "Type the boost in dB first (for example 3). \"Remove boost\" clears it."} for n in names}
         try:
-            db = round(float((options.get("params") or {}).get("db", 0) or 0), 1)
+            db = round(float(raw), 1)
         except (TypeError, ValueError):
             return {n: {"ok": False, "message": "The boost must be a number."} for n in names}
+        if not db:
+            return {n: {"ok": False, "message": "A boost of 0 does nothing. Use \"Remove boost\" to clear it."} for n in names}
         if not -ac.MAX_GAIN_DB <= db <= ac.MAX_GAIN_DB:
             return {n: {"ok": False, "message": "The boost must be between -%d and %d dB." % (ac.MAX_GAIN_DB, ac.MAX_GAIN_DB)} for n in names}
         config.load_config()
@@ -398,6 +403,16 @@ def _make_actions(ac):
         config.save_config()
         return out
 
+    def remove_boost(names, options, collection):
+        config.load_config()
+        gains = dict(config.get('audio_gains', {}) or {})
+        for n in names:
+            ac.clear_gain_cache(n)
+            gains.pop(n, None)
+        config.set('audio_gains', gains)
+        config.save_config()
+        return {n: _ok("Boost removed.") for n in names}
+
     return [
         FileAction("timestamps", "Time the words", run=_run_timing, pending=_timing_pending, status=_timing_pill,
                    pending_label="Time all untimed"),
@@ -406,8 +421,9 @@ def _make_actions(ac):
         FileAction("live_on", "Put on the Live tab", run=live_set(True),
                    status=lambda f: {"text": "on Live tab", "tone": "muted"} if f["extra"].get("live") else None),
         FileAction("live_off", "Remove from the Live tab", run=live_set(False)),
-        FileAction("boost", "Set boost", run=boost, params=[Param("db", "Boost (dB, 0 removes it)", "number", 0, min=-ac.MAX_GAIN_DB, max=ac.MAX_GAIN_DB, step=0.5)],
+        FileAction("boost", "Set boost", run=boost, params=[Param("db", "Boost (dB)", "number", "", min=-ac.MAX_GAIN_DB, max=ac.MAX_GAIN_DB, step=0.5)],
                    status=lambda f: {"text": "boost %+g dB" % f["extra"]["gain"], "tone": "muted"} if f["extra"].get("gain") else None),
+        FileAction("boost_clear", "Remove boost", run=remove_boost),
     ]
 
 
