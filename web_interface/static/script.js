@@ -4,55 +4,9 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     // Elements
-    const audioFileList = document.getElementById('audio-file-list');
-    const selectDefaultAudio = document.getElementById('select-default-audio');
-    const btnSetDefaultAudio = document.getElementById('btn-set-default-audio');
-    const audioUploadInput = document.getElementById('audio-upload');
-    const btnUploadAudio = document.getElementById('btn-upload-audio');
-    const uploadStatus = document.getElementById('upload-status');
-    const audioVolumeSlider = document.getElementById('audio-volume');
-    const audioVolumeValue = document.getElementById('audio-volume-value');
-    const btnSetVolume = document.getElementById('btn-set-volume');
-    const currentDefaultAudio = document.getElementById('current-default-audio');
-    const currentVolumeSpan = document.getElementById('current-volume');
-    const defaultStatus = document.getElementById('default-status');
-    const volumeStatus = document.getElementById('volume-status');
     const btnAddTrigger = document.getElementById('btn-add-trigger');
     const triggerStatus = document.getElementById('trigger-status');
     const tableTriggers = document.getElementById('table-triggers');
-
-    // --- STATUS SECTION LOGIC ---
-    // (Network and AP-mode lines live on the System page now.)
-    function updateStatusUI(data) {
-        if (IS_AP_MODE) {
-            if(btnSetDefaultAudio) btnSetDefaultAudio.disabled = true;
-            if(btnUploadAudio) btnUploadAudio.disabled = true;
-            if(btnSetVolume) btnSetVolume.disabled = true;
-        }
-    }
-
-    function loadStatus() {
-        fetch('/api/status')
-            .then(res => res.json())
-            .then(data => {
-                updateStatusUI(data);
-                // Update default audio and volume from status if available (or make separate calls)
-                if (currentDefaultAudio) currentDefaultAudio.textContent = data.default_audio_file || 'None';
-                if (currentVolumeSpan) currentVolumeSpan.textContent = data.volume !== undefined ? data.volume + '%' : '--%';
-                if (audioVolumeSlider && data.volume !== undefined) {
-                    audioVolumeSlider.value = data.volume;
-                    if(audioVolumeValue) audioVolumeValue.textContent = data.volume;
-                } else if (audioVolumeSlider) {
-                    // Fallback if not in status, load separately
-                    loadVolume();
-                }
-            })
-            .catch(() => {
-                updateStatusUI({}); 
-                if (currentDefaultAudio) currentDefaultAudio.textContent = 'Error loading';
-                if (currentVolumeSpan) currentVolumeSpan.textContent = 'Error';
-            });
-    }
 
     // --- SHARED UI HELPERS ---
     // One way to report a result: a status line next to the thing you just touched.
@@ -63,7 +17,6 @@ document.addEventListener('DOMContentLoaded', function() {
         clearTimeout(el._flashTimer);
         el._flashTimer = setTimeout(() => { el.textContent = ''; }, 5000);
     }
-    const audioFilesMsg = document.getElementById('audio-files-msg');
 
     // --- NOW PLAYING / STOP ---
     // Anything the prop speaks (a button here, a sensor, a network request, a timed trigger)
@@ -82,6 +35,19 @@ document.addEventListener('DOMContentLoaded', function() {
         try { await fetch('/api/live/stop', { method: 'POST' }); } catch (e) {}
         await refreshNow();
     }
+    // Clip descriptions for the "Speaking: ..." bar (the Media tab owns them; asked for at most once a minute)
+    let _descs = {}, _descsAt = 0;
+    async function clipDescriptions() {
+        if (Date.now() - _descsAt > 60000) {
+            _descsAt = Date.now();
+            try {
+                const d = await (await fetch('/api/audio/files')).json();
+                _descs = {};
+                (d.files || []).forEach(f => { _descs[f.filename] = f.description; });
+            } catch (e) {}
+        }
+        return _descs;
+    }
     async function refreshNow() {
         let h;
         try { h = await (await fetch('/api/health')).json(); } catch (e) { return null; }
@@ -89,8 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const bar = document.getElementById('nowbar');
         if (bar) {
             bar.hidden = !h.performing;
-            const descs = {};
-            audioFilesData.forEach(f => { descs[f.filename] = f.description; });
+            const descs = await clipDescriptions();
             document.getElementById('nowbar-text').textContent = h.performing
                 ? 'Speaking: ' + (h.now_playing ? (descs[h.now_playing] || h.now_playing) : 'playing now') : '';
         }
@@ -103,366 +68,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('nav.tabs a[data-tab]').forEach(a => a.addEventListener('click', () => {
         document.querySelectorAll('audio').forEach(p => p.pause());
     }));
-
-    // Fetch and display audio files
-    let audioFilesData = [];
-    const audioSort = document.getElementById('audio-sort');
-    const audioPoolFilter = document.getElementById('audio-pool-filter');
-
-    function fmtDuration(sec) {
-        if (sec == null) return '';
-        const m = Math.floor(sec / 60), s = Math.round(sec % 60);
-        return `${m}:${String(s).padStart(2, '0')}`;
-    }
-
-    function refreshPoolFilter() {
-        if (!audioPoolFilter) return;
-        const names = new Map();
-        audioFilesData.forEach(f => f.pools.forEach(p => names.set(p.id, p.name)));
-        const current = audioPoolFilter.value;
-        audioPoolFilter.innerHTML = '<option value="">All files</option><option value="__none__">Not in any pool</option>';
-        names.forEach((name, id) => {
-            const o = document.createElement('option');
-            o.value = id; o.textContent = 'In pool: ' + name;
-            audioPoolFilter.appendChild(o);
-        });
-        audioPoolFilter.value = names.has(current) || current === '__none__' ? current : '';
-    }
-
-    function renderAudioList() {
-        if (!audioFileList) return;
-        const poolId = audioPoolFilter ? audioPoolFilter.value : '';
-        const sortBy = audioSort ? audioSort.value : 'name';
-        let files = audioFilesData.filter(f =>
-            !poolId || (poolId === '__none__' ? f.pools.length === 0 : f.pools.some(p => p.id === poolId)));
-        const posIn = f => (f.pools.find(p => p.id === poolId) || {}).position || 0;
-        const cmp = {
-            name: (a, b) => a.filename.localeCompare(b.filename),
-            newest: (a, b) => (b.modified || 0) - (a.modified || 0),
-            oldest: (a, b) => (a.modified || 0) - (b.modified || 0),
-            longest: (a, b) => (b.duration || 0) - (a.duration || 0),
-            shortest: (a, b) => (a.duration || 0) - (b.duration || 0),
-            pool: (a, b) => (a.pools[0] ? a.pools[0].name : '\uffff').localeCompare(b.pools[0] ? b.pools[0].name : '\uffff') || a.filename.localeCompare(b.filename),
-            order: (a, b) => posIn(a) - posIn(b),
-        }[sortBy] || (() => 0);
-        files = files.slice().sort(cmp);
-        audioFileList.innerHTML = '';
-        if (!files.length) {
-            audioFileList.innerHTML = '<li class="list-group-item text-muted">No files match.</li>';
-            return;
-        }
-        files.forEach(fileInfo => {
-            const { filename, is_default, has_timestamps } = fileInfo;
-            const li = document.createElement('li');
-            li.className = 'list-group-item';
-
-            const head = document.createElement('div');
-            head.className = 'd-flex justify-content-between align-items-start flex-wrap';
-            const title = document.createElement('div');
-            const nameEl = document.createElement('strong');
-            nameEl.textContent = filename;
-            title.appendChild(nameEl);
-            const addBadge = (text, cls) => {
-                const b = document.createElement('span');
-                b.className = 'badge ms-1 ' + cls;
-                b.textContent = text;
-                title.appendChild(b);
-            };
-            if (is_default) addBadge('Default', 'bg-primary');
-            fileInfo.pools.forEach(p => addBadge(poolId === p.id ? `${p.name} #${p.position}` : p.name, 'bg-secondary'));
-            if (!fileInfo.pools.length) addBadge('No pool', 'bg-light text-dark border');
-            const meta = document.createElement('div');
-            meta.className = 'form-text';
-            const added = fileInfo.modified ? new Date(fileInfo.modified * 1000).toLocaleDateString() : '';
-            meta.textContent = [fmtDuration(fileInfo.duration), added && 'added ' + added].filter(Boolean).join(' · ');
-            title.appendChild(meta);
-
-            const buttonGroup = document.createElement('div');
-            buttonGroup.className = 'btn-group mt-1 mt-md-0';
-            if (!has_timestamps) {
-                const generateBtn = document.createElement('button');
-                generateBtn.className = 'btn btn-sm btn-info me-1 btn-generate-timestamps';
-                generateBtn.textContent = 'Gen Timestamps';
-                generateBtn.dataset.filename = filename;
-                generateBtn.onclick = function() { generateTimestamps(filename); };
-                buttonGroup.appendChild(generateBtn);
-            } else {
-                const timestampsBadge = document.createElement('span');
-                timestampsBadge.className = 'badge bg-info me-1 align-self-center';
-                timestampsBadge.textContent = 'Has Timestamps';
-                buttonGroup.appendChild(timestampsBadge);
-            }
-            const playBtn = document.createElement('button');
-            playBtn.type = 'button';
-            playBtn.className = 'btn btn-sm btn-info me-1';
-            playBtn.dataset.playFile = filename;
-            playBtn.textContent = 'Play on prop';
-            playBtn.addEventListener('click', async () => {
-                if (playBtn.dataset.playing) { await stopProp(); return; }
-                const r = await postJson('/api/live/play', { audio_file: filename });
-                flash(audioFilesMsg, r.result.success ? 'Playing ' + filename + ' on the prop' : (r.result.message || 'Could not play'), !r.result.success);
-                refreshNow();
-            });
-            buttonGroup.appendChild(playBtn);
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn btn-sm btn-danger btn-delete-audio';
-            delBtn.textContent = 'Delete';
-            delBtn.dataset.filename = filename;
-            delBtn.onclick = function() { deleteAudioFile(filename); };
-            buttonGroup.appendChild(delBtn);
-            head.appendChild(title);
-            head.appendChild(buttonGroup);
-            li.appendChild(head);
-
-            const desc = document.createElement('input');
-            desc.type = 'text';
-            desc.className = 'form-control form-control-sm mt-2';
-            desc.placeholder = 'Description (e.g. Clue 3: glass T)';
-            desc.value = fileInfo.description || '';
-            desc.addEventListener('change', async () => {
-                const resp = await fetch('/api/audio/description', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename, description: desc.value }) });
-                if (resp.ok) { fileInfo.description = desc.value.trim(); desc.classList.add('is-valid'); setTimeout(() => desc.classList.remove('is-valid'), 1500); }
-                else desc.classList.add('is-invalid');
-            });
-            li.appendChild(desc);
-
-            const liveWrap = document.createElement('label');
-            liveWrap.className = 'form-check mt-2';
-            const liveChk = document.createElement('input');
-            liveChk.type = 'checkbox';
-            liveChk.className = 'form-check-input';
-            liveChk.checked = !!fileInfo.live;
-            liveChk.addEventListener('change', async () => {
-                await fetch('/api/live/favorite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename, on: liveChk.checked }) });
-                fileInfo.live = liveChk.checked;
-            });
-            liveWrap.appendChild(liveChk);
-            liveWrap.appendChild(document.createTextNode(' Live button (show on the Live tab)'));
-            li.appendChild(liveWrap);
-
-            // Per-file boost: the system volume tops out, this raises just this clip
-            const gainRow = document.createElement('div');
-            gainRow.className = 'gain-row mt-2';
-            const gainLbl = document.createElement('label');
-            gainLbl.textContent = 'Boost';
-            gainLbl.style.margin = '0';
-            const gainSlider = document.createElement('input');
-            gainSlider.type = 'range';
-            gainSlider.min = -10; gainSlider.max = 20; gainSlider.step = 1;
-            gainSlider.value = fileInfo.gain_db || 0;
-            const gainVal = document.createElement('span');
-            gainVal.className = 'form-text';
-            const fmtGain = v => (v > 0 ? '+' : '') + v + ' dB' + (v == 0 ? ' (original)' : '');
-            gainVal.textContent = fmtGain(+gainSlider.value);
-            gainSlider.addEventListener('input', () => { gainVal.textContent = fmtGain(+gainSlider.value); });
-            gainSlider.addEventListener('change', async () => {
-                gainVal.textContent = 'rendering...';
-                gainSlider.disabled = true;
-                try {
-                    const resp = await fetch('/api/audio/gain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename, gain_db: +gainSlider.value }) });
-                    const result = await resp.json();
-                    if (resp.ok && result.success) {
-                        fileInfo.gain_db = result.gain_db;
-                        gainVal.textContent = fmtGain(result.gain_db) + ' saved';
-                        player.src = (result.gain_db ? '/api/audio/preview/' : '/SoundFiles/') + encodeURIComponent(filename) + '?t=' + Date.now();
-                    } else gainVal.textContent = result.error || 'failed';
-                } catch (e) { gainVal.textContent = 'failed'; }
-                gainSlider.disabled = false;
-            });
-            gainRow.appendChild(gainLbl);
-            gainRow.appendChild(gainSlider);
-            gainRow.appendChild(gainVal);
-            li.appendChild(gainRow);
-
-            const player = document.createElement('audio');
-            player.controls = true;
-            player.preload = 'none';
-            player.className = 'w-100 mt-2';
-            player.src = (fileInfo.gain_db ? '/api/audio/preview/' : '/SoundFiles/') + encodeURIComponent(filename);
-            // Only one file plays at a time
-            player.addEventListener('play', () => {
-                audioFileList.querySelectorAll('audio').forEach(a => { if (a !== player) a.pause(); });
-            });
-            li.appendChild(player);
-            audioFileList.appendChild(li);
-        });
-        syncPlayButtons();
-    }
-    if (audioSort) audioSort.addEventListener('change', renderAudioList);
-    if (audioPoolFilter) audioPoolFilter.addEventListener('change', renderAudioList);
-
-    function loadAudioFiles() {
-        if (IS_AP_MODE) { // Don't load audio files if in AP mode
-            if(audioFileList) audioFileList.innerHTML = '<li class="list-group-item">Audio management disabled in AP Mode.</li>';
-            return;
-        }
-        fetch('/api/audio/files')
-            .then(res => res.json())
-            .then(data => {
-                if(audioFileList) audioFileList.innerHTML = '';
-                if(selectDefaultAudio) selectDefaultAudio.innerHTML = '';
-                
-                audioFilesData = data.files;
-                renderAudioList();
-                data.files.forEach(fileInfo => {
-                    if (selectDefaultAudio) {
-                        const opt = document.createElement('option');
-                        opt.value = fileInfo.filename;
-                        opt.textContent = fileInfo.filename;
-                        if (fileInfo.is_default) opt.selected = true;
-                        selectDefaultAudio.appendChild(opt);
-                    }
-                });
-                refreshPoolFilter();
-                if (currentDefaultAudio) {
-                    currentDefaultAudio.textContent = data.default || 'None';
-                }
-            })
-            .catch(err => {
-                if(audioFileList) audioFileList.innerHTML = '<li class="list-group-item text-danger">Error loading audio files.</li>';
-                console.error("Error loading audio files:", err);
-            });
-    }
-
-    // Set default audio file
-    btnSetDefaultAudio.addEventListener('click', function() {
-        const filename = selectDefaultAudio.value;
-        if (!filename) { flash(defaultStatus, 'Please select an audio file.', true); return; }
-        fetch('/api/audio/default', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                loadAudioFiles();
-                loadStatus(); // Refresh status to get new default audio
-                loadPools();  // the sensor dropdowns name the default
-                flash(defaultStatus, 'Default audio set to ' + filename);
-            } else {
-                flash(defaultStatus, data.error || 'Failed to set default audio.', true);
-            }
-        });
-    });
-
-    function displayMessage(element, message, isSuccess) {
-        if (element) {
-            element.textContent = message;
-            element.className = isSuccess ? 'form-text text-success' : 'form-text text-danger';
-        }
-    }
-
-    // Upload audio files (one or several), one request each so a bad file doesn't sink the rest.
-    // XMLHttpRequest rather than fetch so the button can show progress, and so a transfer that
-    // stops moving gives up with a message instead of sitting on "Uploading..." forever.
-    function uploadOne(file, onProgress) {
-        return new Promise(resolve => {
-            const xhr = new XMLHttpRequest();
-            let stall = null;
-            const arm = () => { clearTimeout(stall); stall = setTimeout(() => xhr.abort(), 30000); };
-            const done = r => { clearTimeout(stall); resolve(r); };
-            xhr.open('POST', '/api/audio/upload');
-            xhr.upload.onprogress = e => { arm(); if (e.lengthComputable) onProgress(Math.round(100 * e.loaded / e.total)); };
-            xhr.upload.onload = () => { arm(); onProgress(null); };   // all sent: the Pi may now convert it
-            xhr.onload = () => {
-                let data = {};
-                try { data = JSON.parse(xhr.responseText); } catch (e) {}
-                if (xhr.status === 401) done({ error: 'Not logged in. Reload the page and log in again.' });
-                else done(data.success ? { filename: data.filename } : { error: data.error || ('server said ' + xhr.status) });
-            };
-            xhr.onerror = () => done({ error: 'connection failed' });
-            xhr.onabort = () => done({ error: 'no data moved for 30 seconds, gave up' });
-            xhr.ontimeout = () => done({ error: 'took longer than 10 minutes' });
-            xhr.timeout = 600000;
-            const formData = new FormData();
-            formData.append('file', file);
-            arm();
-            xhr.send(formData);
-        });
-    }
-
-    btnUploadAudio.addEventListener('click', async function() {
-        const files = audioUploadInput ? Array.from(audioUploadInput.files) : [];
-        if (!files.length) {
-            displayMessage(uploadStatus, 'No file selected.', false);
-            return;
-        }
-        btnUploadAudio.disabled = true;
-        const done = [], failed = [];
-        for (let i = 0; i < files.length; i++) {
-            const label = `${i + 1}/${files.length}`;
-            displayMessage(uploadStatus, `Sending ${files[i].name} (${Math.round(files[i].size / 1024)} KB)...`, true);
-            btnUploadAudio.textContent = `Sending ${label}...`;
-            const r = await uploadOne(files[i], pct => {
-                btnUploadAudio.textContent = pct === null ? `Converting ${label}...` : `Sending ${label} ${pct}%`;
-            });
-            if (r.filename) done.push(r.filename);
-            else failed.push(`${files[i].name} (${r.error})`);
-        }
-        if (done.length) {
-            loadAudioFiles();
-            audioUploadInput.value = ''; // Clear file input
-        }
-        const ok = `Uploaded ${done.length} file${done.length === 1 ? '' : 's'}`;
-        displayMessage(uploadStatus, failed.length ? `${ok}. Failed: ${failed.join(', ')}` : `${ok}: ${done.join(', ')}`, !failed.length);
-        btnUploadAudio.disabled = false;
-        btnUploadAudio.textContent = 'Upload';
-    });
-
-    // Delete audio file
-    function deleteAudioFile(filename) {
-        if (!confirm(`Are you sure you want to delete ${filename}? This will also delete its timestamp file if it exists.`)) return;
-        fetch(`/api/audio/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                flash(audioFilesMsg, 'Deleted ' + filename);
-                loadAudioFiles();
-            } else {
-                flash(audioFilesMsg, data.error || 'Failed to delete file.', true);
-            }
-        })
-        .catch(err => flash(audioFilesMsg, `Error deleting file: ${err}`, true))
-    }
-
-    // Fetch and display volume
-    function loadVolume() {
-        if (IS_AP_MODE) return;
-        fetch('/api/audio/volume')
-            .then(res => res.json())
-            .then(data => {
-                if (audioVolumeSlider) audioVolumeSlider.value = data.volume;
-                if (audioVolumeValue) audioVolumeValue.textContent = data.volume;
-                if (currentVolumeSpan) currentVolumeSpan.textContent = data.volume + '%';
-            })
-            .catch(err => {
-                if (currentVolumeSpan) currentVolumeSpan.textContent = 'Error';
-                console.error("Error loading volume:", err);
-            });
-    }
-    audioVolumeSlider.addEventListener('input', function() {
-        if(audioVolumeValue) audioVolumeValue.textContent = this.value;
-    });
-    btnSetVolume.addEventListener('click', function() {
-        const volume = parseInt(audioVolumeSlider.value, 10);
-        fetch('/api/audio/volume', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ volume })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                loadVolume(); // Reload to confirm
-                if (currentVolumeSpan) currentVolumeSpan.textContent = data.volume + '%';
-                flash(volumeStatus, 'Volume set to ' + data.volume + '%');
-            } else {
-                flash(volumeStatus, data.error || 'Failed to set volume', true);
-            }
-        })
-        .catch(() => flash(volumeStatus, 'Request error.', true));
-    });
 
     // --- COOLDOWN PERIOD LOGIC ---
     const cooldownInput = document.getElementById('cooldown-period-input');
@@ -573,72 +178,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Initial data loads
-    loadStatus(); // This will also trigger initial volume load if needed
-    loadAudioFiles();
 
     // Call loadCooldown on page load
     loadCooldown();
 
     // Call loadIdleBehavior on page load
     loadIdleBehavior();
-
-    function generateTimestamps(filename, statusEl) {
-        console.log("generateTimestamps called for:", filename);
-        if (!filename) return;
-
-        // Attempt to select the specific button to give visual feedback
-        const generateButton = audioFileList.querySelector(`.btn-generate-timestamps[data-filename="${filename}"]`);
-        const originalButtonText = generateButton ? generateButton.textContent : '';
-
-        if(generateButton) {
-            generateButton.disabled = true;
-            generateButton.textContent = 'Generating...';
-        }
-
-        // Use 'uploadStatus' for messages, assuming it exists and is suitable
-        const statusElement = statusEl || audioFilesMsg;
-
-        fetch(`/api/audio/generate_timestamps/${encodeURIComponent(filename)}`, { 
-            method: 'POST'
-        })
-        .then(res => {
-            if (!res.ok) { // Check for non-2xx responses
-                return res.json().then(errData => {
-                    throw { status: res.status, data: errData }; // Throw an object to be caught
-                });
-            }
-            return res.json();
-        })
-        .then(data => {
-            if (data.success) {
-                flash(statusElement, `Timestamps generated for ${filename}`);
-                loadAudioFiles(); // Refresh list to show new timestamp status
-                loadStatus(); // Also refresh general status
-            } else {
-                // data.error should be primary, data.details for more specifics
-                const errorMessage = `Error: ${data.error || 'Failed to generate timestamps.'} ${data.details ? 'Details: ' + data.details : ''}`;
-                flash(statusElement, errorMessage, true);
-                console.error("Timestamp generation failed:", data);
-            }
-        })
-        .catch(error => {
-            let errorMessage = 'Request error generating timestamps.';
-            if (error.status && error.data && error.data.error) { // From our custom thrown error
-                 errorMessage = `Error ${error.status}: ${error.data.error}. ${error.data.details ? 'Details: ' + error.data.details : ''}`;
-            } else if (error.message) { // Standard JS error
-                errorMessage += ` ${error.message}`;
-            }
-            
-            flash(statusElement, errorMessage, true);
-            console.error("Timestamp generation request failed:", error);
-        })
-        .finally(() => {
-            if(generateButton) {
-                generateButton.disabled = false;
-                generateButton.textContent = originalButtonText; 
-            }
-        });
-    }
 
     // --- NETWORK TRIGGERS UI LOGIC ---
     async function loadTriggers() {
@@ -711,12 +256,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     const info = selectAudio.value.startsWith('file:') ? fileMap.get(selectAudio.value.slice(5)) : null;
                     tsNote.innerHTML = '';
                     if (isPlay && info && !info.has_timestamps) {
-                        const btnGen = document.createElement('button');
-                        btnGen.type = 'button';
-                        btnGen.className = 'btn btn-sm btn-info';
-                        btnGen.textContent = 'Gen Timestamps';
-                        btnGen.addEventListener('click', () => generateTimestamps(info.filename, triggerStatus));
-                        tsNote.appendChild(btnGen);
+                        tsNote.appendChild(document.createTextNode('No mouth timing yet. '));
+                        const link = document.createElement('a');
+                        link.href = '/media';
+                        link.textContent = 'Time the words on the Media tab';
+                        tsNote.appendChild(link);
                     }
                 };
                 selectAction.addEventListener('change', syncState);
@@ -749,7 +293,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (resp.ok && result.success) {
                             displayTriggerMessage('Trigger saved');
                             loadTriggers();
-                            loadAudioFiles();
                         } else {
                             displayTriggerMessage(result.error || 'Failed to save trigger', true);
                         }
@@ -1009,7 +552,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const payload = { name: inputName.value, order: selectOrder.value, files: checks.filter(c => c.checked).map(c => c.value) };
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         const result = await resp.json();
-                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadAudioFiles(); loadPools(); loadTriggers(); loadSchedules(); }
+                        if (resp.ok && result.success) { displayPoolMessage('Pool saved'); loadPools(); loadTriggers(); loadSchedules(); }
                         else displayPoolMessage(result.error || 'Save failed', true);
                     } catch (e) { displayPoolMessage('Save failed', true); }
                 });
@@ -1021,7 +564,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     try {
                         const resp = await fetch(`/api/greeting_pools/${pool.id}`, { method: 'DELETE' });
                         const result = await resp.json();
-                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadAudioFiles(); loadPools(); loadTriggers(); loadSchedules(); }
+                        if (resp.ok && result.success) { displayPoolMessage('Pool deleted'); loadPools(); loadTriggers(); loadSchedules(); }
                         else displayPoolMessage(result.error || 'Delete failed', true);
                     } catch (e) { displayPoolMessage('Delete failed', true); }
                 });
@@ -1667,7 +1210,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const liveShow = document.getElementById('live-show');
         if (liveShow) liveShow.textContent = st.show ? 'Show: ' + st.show : '';
         liveMessages.innerHTML = '';
-        if (!st.messages.length) empty(liveMessages, 'No messages yet. Tick "Live button" on a file in the Media tab.');
+        if (!st.messages.length) empty(liveMessages, 'No messages yet. Use "Put on the Live tab" on a sound in the Media tab.');
         st.messages.forEach(m => liveButton(liveMessages, m.description || m.filename, m.description ? m.filename : '', () => post('/api/live/play', { audio_file: m.filename })));
         const pools = document.getElementById('live-pools');
         pools.innerHTML = '';

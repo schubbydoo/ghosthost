@@ -19,9 +19,9 @@
             <nav class="tabs">
             <a href="/dashboard">Dashboard</a>
             <a href="/ai">AI</a>
+            <a href="/media">Media</a>
             <a href="#live" data-tab="live">Live</a>
-            <a href="#media" data-tab="media">Media</a>
-            <a href="#pools" data-tab="pools">Pools</a>
+                        <a href="#pools" data-tab="pools">Pools</a>
             <a href="#triggers" data-tab="triggers">Triggers</a>
             <a href="#idle" data-tab="idle">Idle</a>
             <a href="/system">System</a>
@@ -147,92 +147,7 @@
                 </div>
             </div>
         </section>
-        <section class="tab-pane" data-tab="media">
-            <h2 class="pane-title">Media</h2>
-            <p class="pane-sub">Audio files: upload, listen, describe, and generate mouth-sync timestamps.</p>
-<!-- Default Audio and Upload Section -->
-        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
-            <div class="card-header">
-                Volume, Default Audio &amp; Upload
-            </div>
-            <div class="card-body">
-                <!-- Volume Control -->
-                <div class="mb-3">
-                    <label for="audio-volume" class="form-label">Volume (<span id="current-volume">--</span>)</label>
-                    <div class="input-group">
-                        <input type="range" class="form-range" min="0" max="100" id="audio-volume">
-                        <span class="input-group-text" id="audio-volume-value">--</span>
-                        <button class="btn btn-secondary" id="btn-set-volume">Set Volume</button>
-                    </div>
-                    <div id="volume-status" class="form-text"></div>
-                </div>
-                <hr>
-                <div class="mb-3">
-                    <strong>Current Default Audio:</strong> <span id="current-default-audio">Loading...</span>
-                </div>
-                <!-- Set Default Audio -->
-                <div class="mb-3">
-                    <label for="select-default-audio" class="form-label">Set Default Audio</label>
-                    <select class="form-select" id="select-default-audio">
-                        <!-- Populated by JS -->
-                    </select>
-                    <button class="btn btn-success mt-2" id="btn-set-default-audio">Set as Default</button>
-                    <div id="default-status" class="form-text"></div>
-                </div>
-                <!-- Upload Audio File -->
-                <div class="mb-3">
-                    <label for="audio-upload" class="form-label">Upload Audio Files (.wav, .mp3; select several at once)</label>
-                    <input class="form-control" type="file" id="audio-upload" multiple accept=".wav,.mp3,.m4a,.ogg,.flac">
-                    <button class="btn btn-primary mt-2" id="btn-upload-audio">Upload</button>
-                    <div id="upload-status" class="form-text"></div>
-                </div>
-            </div>
-        </div>
-        <!-- End Default Audio and Upload Section -->
-<!-- Audio Management Section -->
-        <div class="card mb-4" {% if is_ap_mode %}style="display:none;"{% endif %}>
-            <div class="card-header">
-                Audio Files
-            </div>
-            <div class="card-body">
-                <!-- Audio File List -->
-                <div class="mb-3">
-                    <h5>Available Audio Files</h5>
-                    <div id="audio-files-msg" class="form-text mb-2"></div>
-                    <div class="row g-2 mb-2">
-                        <div class="col-sm-6">
-                            <select class="form-select form-select-sm" id="audio-sort" aria-label="Sort files">
-                                <option value="name">Sort: Name</option>
-                                <option value="newest">Sort: Newest added</option>
-                                <option value="oldest">Sort: Oldest added</option>
-                                <option value="longest">Sort: Longest</option>
-                                <option value="shortest">Sort: Shortest</option>
-                                <option value="pool">Sort: Pool</option>
-                                <option value="order">Sort: Order within pool (pick a pool)</option>
-                            </select>
-                        </div>
-                        <div class="col-sm-6">
-                            <select class="form-select form-select-sm" id="audio-pool-filter" aria-label="Filter by pool">
-                                <option value="">All files</option>
-                            </select>
-                        </div>
-                    </div>
-                    <ul class="list-group" id="audio-file-list">
-                        <!-- Populated by JS. Example of list item structure for JS:
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span>filename.wav</span>
-                            <div>
-                                <button class="btn btn-sm btn-info btn-generate-timestamps" data-filename="filename.wav" style="display:none;">Generate Timestamps</button>
-                                <button class="btn btn-sm btn-danger btn-delete-audio" data-filename="filename.wav">Delete</button>
-                            </div>
-                        </li>
-                        -->
-                    </ul>
-                </div>
-            </div>
-        </div>
-        <!-- End Audio Management Section -->
-        </section>
+        
         <section class="tab-pane" data-tab="pools">
             <h2 class="pane-title">Pools</h2>
             <p class="pane-sub">Group clips into pools. Timetables that switch pools through the night are under Triggers.</p>

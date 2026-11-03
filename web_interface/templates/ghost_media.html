@@ -1,0 +1,33 @@
+{% extends "propkit/media.html" %}
+{# The shared Media tab plus Ghost Host's one prop-specific control: the speaker volume. #}
+{% block content %}
+{{ super() }}
+<div class="box" id="gh-volume">
+    <h2 class="title is-4">Volume</h2>
+    <p class="help" style="margin-bottom:10px">The speaker volume for everything the prop plays. A single sound can be made louder or quieter below (Louder / Quieter).</p>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <input type="range" min="0" max="100" id="gh-vol" style="flex:1 1 240px;min-width:160px">
+        <strong id="gh-vol-val" style="min-width:3.5em">--</strong>
+        <button class="button is-link" type="button" id="gh-vol-set">Set volume</button>
+    </div>
+    <p class="help" id="gh-vol-msg"></p>
+</div>
+{% endblock %}
+{% block scripts %}{{ super() }}
+<script>
+(function () {
+    var r = document.getElementById('gh-vol'), v = document.getElementById('gh-vol-val'), m = document.getElementById('gh-vol-msg');
+    r.addEventListener('input', function () { v.textContent = r.value + '%'; });
+    fetch('/api/audio/volume').then(function (x) { return x.json(); }).then(function (d) {
+        if (d.volume !== undefined) { r.value = d.volume; v.textContent = d.volume + '%'; }
+    }).catch(function () { m.textContent = 'Could not read the volume.'; });
+    document.getElementById('gh-vol-set').addEventListener('click', function () {
+        m.textContent = '';
+        fetch('/api/audio/volume', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({volume: parseInt(r.value, 10)})})
+            .then(function (x) { return x.json(); })
+            .then(function (d) { m.textContent = d.success ? 'Volume set to ' + d.volume + '%.' : (d.error || 'Could not set the volume.'); })
+            .catch(function () { m.textContent = 'Request failed.'; });
+    });
+})();
+</script>
+{% endblock %}

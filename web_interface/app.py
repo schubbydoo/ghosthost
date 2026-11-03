@@ -35,11 +35,11 @@ sys.path.append(os.environ.get("PROPKIT_DIR", os.path.join(os.path.expanduser("~
 import propkit
 from propkit import flask_app as propkit_flask
 from propkit.stats import StatsSpec, by_field_card
-from src.core import ai_settings
+from src.core import ai_settings, media_library
 _BASE_DIR = str(Path(__file__).resolve().parent.parent)
 propkit_cfg = propkit.PropConfig(
     name="Ghost Host", brand=("GHOST", "HOST"),
-    tabs=[("dashboard", "/dashboard", "Dashboard"), ("ai", "/ai", "AI"), ("live", "/#live", "Live"), ("media", "/#media", "Media"),
+    tabs=[("dashboard", "/dashboard", "Dashboard"), ("ai", "/ai", "AI"), ("media", "/media", "Media"), ("live", "/#live", "Live"),
           ("pools", "/#pools", "Pools"), ("triggers", "/#triggers", "Triggers"), ("idle", "/#idle", "Idle"),
           ("system", "/system", "System")],
     service_name="ghosthost.service", base_dir=_BASE_DIR, state_dir=os.path.join(_BASE_DIR, "logs"),
@@ -50,10 +50,13 @@ propkit_cfg = propkit.PropConfig(
     stats=StatsSpec(
         noun="performance",
         outcomes={"ok": ("Played", "good"), "error": ("Failed", "bad"), "stopped": ("Stopped", "muted")},   # muted = not a try
+        count_kinds=("play",),      # uploads, deletes and other operator events are not performances
         labels={"visits": ("Performances", "all plays"), "rate": ("Played OK", "of plays that started")},
         extra_cards=[by_field_card("source", "Where it came from",
                                    {"sensor": "Sensor", "network_trigger": "Network trigger", "timed": "Timer", "live": "Live tab"})]),
     ai=ai_settings.build(),
+    files=media_library.build(audio_controller),     # the shared Media tab (/media), with Ghost Host's own store and actions
+    files_template="ghost_media.html",
     events_dir=os.path.join(_BASE_DIR, "logs"),
     login=True,
     login_bypass=lambda r: r.client_ip.startswith("192.168.4."),
@@ -115,114 +118,6 @@ def list_audio_files_api():
         })
     return jsonify({'files': file_infos, 'default': default_file})
 
-@app.route('/api/audio/gain', methods=['POST'])
-def set_audio_gain_api():
-    """Set a per-file volume boost in dB (0 clears it): {filename, gain_db}. The
-    boosted copy is rendered now so the next play starts instantly."""
-    config.load_config()
-    data = request.get_json() or {}
-    filename = data.get('filename')
-    if filename not in audio_controller.list_audio_files():
-        return jsonify({'error': 'File not found'}), 404
-    try:
-        gain = round(float(data.get('gain_db', 0)), 1)
-    except (TypeError, ValueError):
-        return jsonify({'error': 'gain_db must be a number'}), 400
-    limit = audio_controller.MAX_GAIN_DB
-    if not -limit <= gain <= limit:
-        return jsonify({'error': f'gain_db must be between -{limit} and {limit}'}), 400
-    gains = config.get('audio_gains', {}) or {}
-    audio_controller.clear_gain_cache(filename)
-    if gain:
-        if not audio_controller.gain_path(filename, gain):
-            return jsonify({'error': 'Could not render the boosted copy (is ffmpeg installed?)'}), 500
-        gains[filename] = gain
-    else:
-        gains.pop(filename, None)
-    config.set('audio_gains', gains)
-    config.save_config()
-    return jsonify({'success': True, 'gain_db': gain})
-
-@app.route('/api/audio/preview/<path:filename>')
-def preview_audio_api(filename):
-    """The file as the prop will play it (with its boost), for the browser player."""
-    safe = os.path.basename(filename)
-    if safe not in audio_controller.list_audio_files():
-        return jsonify({'error': 'File not found'}), 404
-    config.load_config()
-    path = None
-    gain = audio_controller.get_gain(safe)
-    if gain:
-        path = audio_controller.gain_path(safe, gain)
-    if not path:
-        soundfiles = os.path.abspath(os.path.join(app.root_path, '..', config.get('audio.soundfiles_dir', 'SoundFiles')))
-        return send_from_directory(soundfiles, safe)
-    return send_from_directory(os.path.dirname(os.path.abspath(path)), os.path.basename(path))
-
-@app.route('/api/audio/description', methods=['POST'])
-def set_audio_description_api():
-    config.load_config()
-    data = request.get_json() or {}
-    filename = data.get('filename')
-    if filename not in audio_controller.list_audio_files():
-        return jsonify({'error': 'File not found'}), 404
-    descriptions = config.get('audio_descriptions', {}) or {}
-    text = (data.get('description') or '').strip()
-    if text:
-        descriptions[filename] = text
-    else:
-        descriptions.pop(filename, None)
-    config.set('audio_descriptions', descriptions)
-    config.save_config()
-    return jsonify({'success': True})
-
-@app.route('/api/audio/info/<path:filename>', methods=['GET'])
-def get_audio_info_api(filename):
-    info = audio_controller.get_audio_info(filename)
-    if info:
-        return jsonify(info)
-    return jsonify({'error': 'File not found'}), 404
-
-@app.route('/api/audio/upload', methods=['POST'])
-def upload_audio_file_api():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    
-    from werkzeug.utils import secure_filename
-    filename = secure_filename(file.filename)
-    if not filename:
-        return jsonify({'error': 'Invalid filename'}), 400
-
-    file_data = file.read()
-    
-    saved = audio_controller.upload_audio_file(file_data, filename)
-    if saved:
-        return jsonify({'success': True, 'filename': saved})
-    return jsonify({'error': 'Upload failed (not a readable audio file?)'}), 500
-
-@app.route('/api/audio/delete/<path:filename>', methods=['DELETE'])
-def delete_audio_file_api(filename):
-    success = audio_controller.delete_audio_file(filename)
-    if success:
-        return jsonify({'success': True})
-    return jsonify({'error': 'Delete failed'}), 500
-
-@app.route('/api/audio/default', methods=['POST'])
-def set_default_audio_api():
-    data = request.get_json()
-    filename = data.get('filename')
-    if not filename:
-        return jsonify({'error': 'No filename provided'}), 400
-    if filename not in audio_controller.list_audio_files():
-        return jsonify({'error': 'File not found or invalid'}), 404
-
-    config.set('audio.default_file', filename)
-    config.save_config()
-    return jsonify({'success': True, 'default': filename})
-
 @app.route('/api/audio/volume', methods=['GET', 'POST'])
 def audio_volume_api():
     if request.method == 'GET':
@@ -238,87 +133,6 @@ def audio_volume_api():
             config.save_config()
             return jsonify({'success': True, 'volume': int(volume)})
         return jsonify({'error': 'Failed to set volume'}), 500
-
-@app.route('/api/audio/generate_timestamps/<path:filename>', methods=['POST'])
-def generate_timestamps_api(filename):
-    app.logger.info(f"Received request to generate timestamps for: {filename}")
-    safe_filename = os.path.basename(filename)
-    if safe_filename != filename or safe_filename not in audio_controller.list_audio_files():
-        app.logger.error(f"Timestamp generation rejected for invalid/non-existent file: {filename}")
-        return jsonify({'error': 'Invalid or non-existent audio file provided'}), 400
-
-    script_path = os.path.join(Path(__file__).parent.parent, "tools", "elevenlabs_stt_timestamps.py")
-    soundfiles_dir = config.get('audio.soundfiles_dir', 'SoundFiles')
-    audio_file_path_in_soundfiles = os.path.join(soundfiles_dir, safe_filename)
-
-    env = os.environ.copy()
-    env['ELEVENLABS_STT_MODEL'] = ai_settings.stt_model()   # chosen on the AI tab
-
-    try:
-        app.logger.info(f"Executing timestamp script: {sys.executable} {script_path} '{safe_filename}'")
-        process = subprocess.run(
-            [sys.executable, script_path, safe_filename],
-            capture_output=True, text=True, check=True, timeout=120,
-            cwd=str(Path(__file__).parent.parent), env=env
-        )
-        app.logger.info(f"Timestamp script stdout: {process.stdout}")
-        expected_json_filename = os.path.splitext(safe_filename)[0] + "_timestamps.json"
-        expected_json_path = os.path.join(Path(__file__).parent.parent, soundfiles_dir, expected_json_filename)
-
-        if os.path.exists(expected_json_path):
-            return jsonify({'success': True, 'message': f'Timestamps generated for {safe_filename}', 'output': process.stdout})
-        else:
-            app.logger.error(f"Timestamp script ran but JSON file not found: {expected_json_path}")
-            app.logger.error(f"Script stderr: {process.stderr}")
-            return jsonify({'success': False, 'error': 'Timestamp generation script ran but output file not found.', 'details': process.stderr}), 500
-
-    except subprocess.CalledProcessError as e:
-        app.logger.error(f"Timestamp script execution failed for {safe_filename}. Return code: {e.returncode}")
-        app.logger.error(f"Stdout: {e.stdout}")
-        app.logger.error(f"Stderr: {e.stderr}")
-        return jsonify({'error': 'Timestamp generation script failed.', 'details': e.stderr or e.stdout}), 500
-    except subprocess.TimeoutExpired:
-        app.logger.error(f"Timestamp script timed out for {safe_filename}.")
-        return jsonify({'error': 'Timestamp generation timed out.'}), 500
-    except Exception as e:
-        app.logger.error(f"An unexpected error occurred during timestamp generation for {safe_filename}: {str(e)}")
-        return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
-
-# Serve audio files for playback/download
-@app.route('/SoundFiles/<path:filename>')
-def serve_audio_file(filename):
-    audio_dir = config.get('audio.soundfiles_dir', 'SoundFiles')
-    project_root_soundfiles = os.path.join(app.root_path, '..', audio_dir)
-    return send_from_directory(os.path.abspath(project_root_soundfiles), filename)
-
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    status = {}
-    def get_lan_ip():
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(0.1)
-            s.connect(('8.8.8.8', 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except Exception as e:
-            app.logger.warning(f"Could not get LAN IP: {e}")
-            return 'Unavailable'
-            
-    status['ip_address'] = get_lan_ip()
-    status['current_network_ssid'] = network_manager.get_current_ssid() or "Not Connected"
-    
-    is_ap_active, ap_mode_ssid = network_manager.get_ap_mode_status()
-    status['ap_mode_active'] = is_ap_active
-    status['ap_mode_ssid'] = ap_mode_ssid if is_ap_active else None
-    if is_ap_active:
-        status['ap_mode_ip'] = DEFAULT_AP_IP_CIDR.split('/')[0]
-
-    status['cooldown_period'] = config.get('app.cooldown_period', 30)
-    status['default_audio_file'] = config.get('audio.default_file', 'N/A')
-
-    return jsonify(status)
 
 # --- LIVE TAB API ---
 
