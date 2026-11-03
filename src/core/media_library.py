@@ -212,7 +212,8 @@ class GhostStore:
     def preview_path(self, name, collection=None):
         """What the detail panel plays: the clip as the prop plays it (with its boost) when it has one."""
         gain = float((config.get('audio_gains', {}) or {}).get(name, 0) or 0)
-        return self.ac.gain_path(name, gain) if gain else None
+        p = self.ac.gain_path(name, gain) if gain else None
+        return os.path.abspath(str(p)) if p else None       # the web page serves it from another folder, so it must not be relative
 
     def describe(self, name, text, collection=None):
         self.path(name)
