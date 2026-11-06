@@ -346,3 +346,9 @@ For questions and support:
 - Review log files in `logs/ghosthost.log`
 - Use the motor testing tools for hardware validation
 - Access the web interface for real-time status # ghosthost
+
+## What this prop can do (for programs)
+
+`GET /api/capabilities` (login for people; read tokens for programs such as the propmcp server) lists what Ghost Host can do and what it cannot yet,
+from `src/core/capabilities.py`. When you add a feature, add an entry there (installed, with a one-line proof of the route/module that backs it) and
+the test `tests/test_capabilities.py` keeps the list honest: `PROPKIT_DIR=~/propkit python3 -m unittest tests.test_capabilities` (needs propkit v1.25.0+).

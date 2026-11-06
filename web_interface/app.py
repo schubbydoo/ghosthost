@@ -35,7 +35,7 @@ sys.path.append(os.environ.get("PROPKIT_DIR", os.path.join(os.path.expanduser("~
 import propkit
 from propkit import flask_app as propkit_flask
 from propkit.stats import StatsSpec, by_field_card
-from src.core import ai_settings, media_library
+from src.core import ai_settings, capabilities as capabilities_lib, media_library
 _BASE_DIR = str(Path(__file__).resolve().parent.parent)
 propkit_cfg = propkit.PropConfig(
     name="Ghost Host", brand=("GHOST", "HOST"),
@@ -55,6 +55,7 @@ propkit_cfg = propkit.PropConfig(
         extra_cards=[by_field_card("source", "Where it came from",
                                    {"sensor": "Sensor", "network_trigger": "Network trigger", "timed": "Timer", "live": "Live tab"})]),
     ai=ai_settings.build(),
+    capabilities=capabilities_lib.capabilities, app_version=capabilities_lib.app_version(),     # GET /api/capabilities
     files=media_library.build(audio_controller),     # the shared Media tab (/media), with Ghost Host's own store and actions
     files_template="ghost_media.html",
     events_dir=os.path.join(_BASE_DIR, "logs"),
