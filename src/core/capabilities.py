@@ -99,7 +99,7 @@ PROOFS = {
 
 # Route families in the web app that need no capability of their own (status pages, helpers, propkit's shared pages)
 SHARED_OR_SUPPORT = ("/static", "/api/health", "/api/status", "/api/audio", "/api/system", "/api/netguard", "/api/updates", "/api/ai",
-                     "/api/banner", "/api/capabilities", "/api/files", "/api/stats", "/api/events", "/api/tokens", "/api/wifi", "/api/account",
+                     "/api/banner", "/api/capabilities", "/api/link", "/api/files", "/api/stats", "/api/events", "/api/tokens", "/api/wifi", "/api/account",
                      "/api/schedule/status", "/api/live", "/system", "/login", "/logout", "/setup", "/wifi", "/add-network", "/connect-",
                      "/delete-network", "/")
 
