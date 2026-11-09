@@ -9,6 +9,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const tableTriggers = document.getElementById('table-triggers');
 
     // --- SHARED UI HELPERS ---
+    // Status line under the network triggers (clears itself after a few seconds)
+    function displayTriggerMessage(message, isError = false) {
+        if (triggerStatus) {
+            triggerStatus.textContent = message;
+            triggerStatus.className = `form-text ${isError ? 'text-danger' : 'text-success'}`;
+            setTimeout(() => { triggerStatus.textContent = ''; }, 4000);
+        }
+    }
+
+    // Copy text. The clipboard API only works on https or localhost; the prop is usually opened by plain http, so fall back to a hidden text box.
+    async function copyToClipboard(text) {
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (e) { /* use the older way below */ }
+        try {
+            const box = document.createElement('textarea');
+            box.value = text;
+            box.style.position = 'fixed';
+            box.style.left = '-9999px';
+            document.body.appendChild(box);
+            box.focus();
+            box.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(box);
+            return ok;
+        } catch (e) {
+            return false;
+        }
+    }
+
     // One way to report a result: a status line next to the thing you just touched.
     function flash(el, message, isError = false) {
         if (!el) return;
